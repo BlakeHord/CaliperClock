@@ -1,0 +1,12 @@
+Reference,Qty,Value,Footprint,JLCPCB Part #
+"C1,C2",2,C100n,Capacitor_SMD:C_0603_1608Metric,C91183
+HT1,1,HT1621B,Package_QFP:LQFP-48_7x7mm_P0.5mm,C7532
+J2,1,Conn_01x06,Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical,C37208
+CL_1,1,MY-ZJ-117,custom:MY-ZJ-117,C964865
+CL_2,1,MY-ZJ-118,custom:MY-ZJ-118,C964866
+"R1,R6",2,R10k,Resistor_SMD:R_0603_1608Metric,C25804
+R2,1,R20k,Resistor_SMD:R_0603_1608Metric,C4184
+R3,1,R30k,Resistor_SMD:R_0603_1608Metric,C100001
+R4,1,R40k,Resistor_SMD:R_0603_1608Metric,C23153
+"R5,R7",2,R4.7k,Resistor_SMD:R_0603_1608Metric,C23162
+U1,1,ATtiny85-20M,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,C31540447

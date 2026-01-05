@@ -1,0 +1,24 @@
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+*.elf
+*.hex
+*.bin
+*.o
+*.d
+
+# KiCad backup files
+*-backups/
+
+# Editor files
+*.swp
+*.swo
+*~
+

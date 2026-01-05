@@ -17,6 +17,12 @@ class LCDDriver:
             machine.Pin(18, machine.Pin.OUT),  # index 3
         ]
         self.SEG_PIN = machine.Pin(22, machine.Pin.OUT)
+        
+        # External LED for status indication on GPIO 12
+        # Connect: GPIO 12 -> 220Ω resistor -> LED -> GND
+        self.STATUS_LED = machine.Pin(12, machine.Pin.OUT)
+        self.led_pin_number = 12
+        print("Using external LED on GPIO 12")
 
         # --- Timing defaults (tweakable at runtime) ---
         self.FRAME_HZ = 60         # full frame refresh (per COM returns once per frame)
@@ -30,9 +36,13 @@ class LCDDriver:
         for p in self.ALL_COM_PINS:
             p.off()
         self.SEG_PIN.off()
+        self.STATUS_LED.off()
 
         print("LCD Driver initialized")
         self._print_params()
+        
+        # Flash LED on startup to show script is loaded
+        self._startup_flash()
 
     # ---------- Low-level slot drive ----------
     def _drive_one_slot_halfcycle(self, duty, slot_idx, polarity, seg_on_for_slot):
@@ -90,7 +100,85 @@ class LCDDriver:
         for pin in self.ALL_COM_PINS:
             pin.off()
         self.SEG_PIN.off()
+        self.STATUS_LED.off()
         print("All pins off.")
+    
+    def _startup_flash(self):
+        """Flash LED pattern on startup to indicate script is running"""
+        print(f"🔥 ESP32 Script Loaded - Status LED Flash Test on GPIO {self.led_pin_number}!")
+        print("🔍 Look for blinking LED on your ESP32 board!")
+        
+        # Aggressive startup pattern - very visible
+        for i in range(10):
+            print(f"Flash {i+1}/10")
+            self.STATUS_LED.on()
+            time.sleep(0.2)
+            self.STATUS_LED.off()
+            time.sleep(0.2)
+        
+        time.sleep(1)
+        
+        # SOS pattern (... --- ...)
+        print("📡 SOS Pattern (... --- ...)")
+        # Three short
+        for _ in range(3):
+            self.STATUS_LED.on()
+            time.sleep(0.1)
+            self.STATUS_LED.off()
+            time.sleep(0.1)
+        time.sleep(0.3)
+        # Three long
+        for _ in range(3):
+            self.STATUS_LED.on()
+            time.sleep(0.4)
+            self.STATUS_LED.off()
+            time.sleep(0.1)
+        time.sleep(0.3)
+        # Three short
+        for _ in range(3):
+            self.STATUS_LED.on()
+            time.sleep(0.1)
+            self.STATUS_LED.off()
+            time.sleep(0.1)
+            
+        print("✅ Startup flash complete! If you don't see LED, check GPIO pins or use external LED.")
+    
+    def _activity_flash(self):
+        """Quick flash to show activity during operations"""
+        self.STATUS_LED.on()
+        time.sleep(0.05)
+        self.STATUS_LED.off()
+    
+    def led_test_only(self, duration=30):
+        """Test ONLY the LED without LCD operations - useful for debugging"""
+        print(f"🔦 LED-ONLY Test Mode for {duration} seconds on GPIO {self.led_pin_number}")
+        print("🔍 This will ONLY blink the LED - no LCD operations")
+        
+        end_time = time.time() + duration
+        counter = 0
+        
+        while time.time() < end_time:
+            counter += 1
+            print(f"LED Blink #{counter}")
+            
+            # Slow blink pattern
+            self.STATUS_LED.on()
+            time.sleep(0.5)
+            self.STATUS_LED.off()
+            time.sleep(0.5)
+            
+            # Every 5 blinks, do a rapid pattern
+            if counter % 5 == 0:
+                print(f"  → Rapid burst pattern!")
+                for _ in range(5):
+                    self.STATUS_LED.on()
+                    time.sleep(0.1)
+                    self.STATUS_LED.off()
+                    time.sleep(0.1)
+                time.sleep(1)
+        
+        self.STATUS_LED.off()
+        print("🔦 LED test complete!")
 
     def _run_for_seconds(self, duty, slot_idx, seconds, seg_on):
         """
@@ -121,6 +209,9 @@ class LCDDriver:
 
         print(f"[LockCOM-Guarded] duty=1/{duty}, COM_ref=COM{com_ref_index} (GPIO{[2,4,17,18][com_ref_index]}) "
             f"SEG {'ON' if seg_on else 'OFF'}")
+        
+        # Quick flash to show operation starting
+        self._activity_flash()
 
         infinite = seconds is None
         half_cycles = max(2, int((seconds or 0)/self.SLOT_TIME))
@@ -176,6 +267,10 @@ def main():
     lcd.set_frame_rate(60)         # 30–80 works well
     lcd.set_strobe_seconds(1.0)    # 0.5–2.0 seconds is fine
 
+    # 🔦 LED TEST MODE - Uncomment the next line to ONLY test LED (no LCD operations)
+    # lcd.led_test_only(60)  # Test LED for 60 seconds
+    # return  # Exit after LED test
+
     # Single COM checker (using the guarded version)
     # lcd.lock_com_ref_guarded(duty=3, com_ref_index=2, seg_on=True)
 
@@ -184,13 +279,38 @@ def main():
 
 
     # Run through each COM slot with SEG ON then OFF to figure out which SEG/COM combo lights up which segment
+    print("🚀 Starting LCD COM/SEG identification with status LED activity...")
+    
+    cycle_count = 0
     while(True):
+        cycle_count += 1
+        print(f"📍 Cycle {cycle_count}: Testing COM lines...")
+        
+        # Flash LED to show script activity
+        lcd._activity_flash()
+        
         lcd.lock_com_ref_guarded(duty=lcd.DUTY, com_ref_index=0, seg_on=True, seconds=1)
+        lcd._activity_flash()
         lcd.lock_com_ref_guarded(duty=lcd.DUTY, com_ref_index=0, seg_on=False, seconds=0.5)
+        
+        lcd._activity_flash()
         lcd.lock_com_ref_guarded(duty=lcd.DUTY, com_ref_index=1, seg_on=True, seconds=1)
+        lcd._activity_flash()
         lcd.lock_com_ref_guarded(duty=lcd.DUTY, com_ref_index=1, seg_on=False, seconds=0.5)
+        
+        lcd._activity_flash()
         lcd.lock_com_ref_guarded(duty=lcd.DUTY, com_ref_index=2, seg_on=True, seconds=1)
+        lcd._activity_flash()
         lcd.lock_com_ref_guarded(duty=lcd.DUTY, com_ref_index=2, seg_on=False, seconds=2)
+        
+        # Heartbeat pattern every 5 cycles (longer flash)
+        if cycle_count % 5 == 0:
+            print(f"💓 Heartbeat - {cycle_count} cycles completed")
+            for _ in range(3):
+                lcd.STATUS_LED.on()
+                time.sleep(0.2)
+                lcd.STATUS_LED.off()
+                time.sleep(0.2)
 
 
 if __name__ == "__main__":
