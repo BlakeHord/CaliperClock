@@ -18,10 +18,10 @@ A low-power digital clock built using a salvaged LCD display from a digital cali
 
 | Component | Description |
 |-----------|-------------|
-| ATtiny1616 | Main microcontroller (3.3MHz internal oscillator) |
-| HT1621B LCD | 4-COM LCD driver (from digital caliper) |
-| RV-3028 | I²C Real-Time Clock |
-| 3x Push Buttons | Mode (PB0), Hour (PB1), Minute (PB2) |
+| ATtiny1616 | 8-bit AVR microcontroller, 20 MHz, 20 pins, supports sleep modes, GPIO, interrupts |
+| HT1621B | 32-nibble LCD driver, 4-com 1/3-bias, SPI/parallel interface |
+| RV-3028 | I2C RTC, 24-hour mode, minute alarm output, ultra-low-power |
+| AP3015AKTR-G1 | Boost Switching Regulator IC |
 
 ### Pin Mapping
 
@@ -136,6 +136,3 @@ The repository includes several firmware versions:
 
 MIT License — feel free to use, modify, and share!
 
-## Acknowledgments
-
-Inspired by the satisfying click of a digital caliper and the desire to give its LCD a second life as a desk clock.
