@@ -8,6 +8,7 @@
  *   make BRINGUP=2 flash   -> Task 2: LCD_E displays "HELLO" on the LaunchPad
  *   make BRINGUP=3 flash   -> Task 3: caliper LCD segment scan (V3 board only)
  *   make BRINGUP=4 flash   -> Task 4: XT1+RTC timekeeping demo on the LaunchPad
+ *   make BRINGUP=5 flash   -> Task 5: buttons + LPM3 wake (P1.0-1.2 to GND)
  *
  * Higher tasks (RTC, buttons, LPM3.5, set-time, the real caliper LCD) get added
  * as they're implemented. BRINGUP defaults to the highest test in the Makefile.
@@ -103,6 +104,38 @@ int main(void)
     }
 }
 
+#elif BRINGUP == 5          /* ---- Task 5: buttons + LPM3 wake ---- */
+
+#include "hal_lcd.h"
+#include "buttons.h"
+
+/* Sleeps in LPM3; a button (P1.0=MODE, P1.1=HOUR, P1.2=MIN, each shorted to GND)
+ * wakes the MCU, the press is debounced, its name shows on the glass, and LED2
+ * toggles. Proves the button IRQ wakes from LPM3 and debounce works. */
+int main(void)
+{
+    board_init();
+    hal_lcd_init();
+    buttons_init();
+    hal_lcd_display("PUSH");
+    P4DIR |= BIT0;
+    __enable_interrupt();
+
+    for (;;) {
+        button_t e = buttons_get_event();
+        if (e != BTN_NONE) {
+            P4OUT ^= BIT0;
+            switch (e) {
+            case BTN_MODE: hal_lcd_display("MODE"); break;
+            case BTN_HOUR: hal_lcd_display("HOUR"); break;
+            case BTN_MIN:  hal_lcd_display("MIN");  break;
+            default: break;
+            }
+        }
+        __bis_SR_register(LPM3_bits | GIE);   /* sleep until a button wakes us */
+    }
+}
+
 #else
-#error "Unknown BRINGUP value (expected 1, 2, 3, or 4)"
+#error "Unknown BRINGUP value (expected 1, 2, 3, 4, or 5)"
 #endif

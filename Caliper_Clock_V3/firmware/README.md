@@ -76,8 +76,8 @@ LaunchPad and retry (a known macOS eZ-FET quirk).
 
 The point is to build confidence one layer at a time: each step has a flashable
 test and a concrete "you should see X" so a failure is isolated to the layer you
-just added — instead of debugging a whole clock at once. Steps 1–4 are implemented
-(3 runs only on a V3 board); 5–7 are the planned checkpoints (the roadmap).
+just added — instead of debugging a whole clock at once. Steps 1–5 are implemented
+(3 runs only on a V3 board); 6–7 are the planned checkpoints (the roadmap).
 
 Run each on the **LaunchPad** first; once the custom V3 boards arrive, repeat the
 hardware-dependent ones (LCD, buttons, power) on the real board.
@@ -88,9 +88,9 @@ hardware-dependent ones (LCD, buttons, power) on the real board.
 | 2 | `make BRINGUP=2 flash` | LCD_E peripheral: 4-mux, charge-pump bias, ACLK, pin mux | LaunchPad glass shows **HELLO** (steady, readable contrast) |
 | 3 | `make BRINGUP=3 flash` (V3 board only) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM); record the mapping and correct `HT1621_ADDR_TO_LCDE_SEG[]` |
 | 4 | `make BRINGUP=4 flash` (LaunchPad) | XT1 32.768 kHz + RTC 1 Hz tick keeps time | LED2 blinks 1 Hz; displayed time advances (minutes roll over) |
-| 5 | *(planned)* buttons + LPM3.5 | P1.0–1.2 wake from deep sleep; debounce | Button press wakes and registers; idles in LPM3.5 |
+| 5 | `make BRINGUP=5 flash` | P1.0–1.2 wake from LPM3; 50 ms debounce | Button to GND shows MODE/HOUR/MIN + toggles LED2; idles in LPM3 |
 | 6 | *(planned)* set-time UI | Long-press MODE, hour/min adjust, commit | Time can be set and is retained |
-| 7 | *(planned)* power profiling | Meets the ~µA budget | LPM3.5+LCD < 2 µA on a meter |
+| 7 | *(planned)* power profiling | Meets the ~µA budget | LPM3 + LCD < ~2 µA on a meter |
 
 Notes:
 - **Step 2 caveat:** the FH-1138P glass on the LaunchPad has a *different* pinout
@@ -99,6 +99,11 @@ Notes:
 - **Clock source:** Steps 1–2 run on the default post-reset ACLK (~32 kHz REFO),
   matching TI's out-of-box demo. Step 4 switches ACLK to the 32.768 kHz **XT1**
   crystal for timekeeping accuracy and lower power.
+- **Sleep mode = LPM3, not LPM3.5.** Per the datasheet (§8.7), LPM3 with the LCD
+  and RTC is ~1.1 µA typ — inside budget — while the always-on LCD charge pump
+  (~1 µA) means LPM3.5 would save only ~0.2 µA at the cost of waking via reset
+  (FRAM state persistence, full re-init). LPM3 wakes cleanly per second and on
+  button edges. Revisit LPM3.5 in Task 7 only if measurements demand it.
 
 ## Current status
 
@@ -118,10 +123,16 @@ Notes:
   datasheet-verified (SLAU445 CS ch.3 + RTC ch.15, Table 9-18 for XIN/XOUT).
   `BRINGUP=4` demos it on the LaunchPad (time on the glass + LED2 heartbeat),
   sleeping in LPM3 between ticks.
+- **Task 5 (done, LaunchPad-testable):** `src/buttons.c` — P1.0/1.1/1.2 (MODE/
+  HOUR/MIN), internal pull-ups, falling-edge IRQ that wakes from LPM3, 50 ms
+  Timer_A0 debounce. `BRINGUP=5` shows the pressed button on the glass. Uses
+  **LPM3** (see sleep-mode note above), not the bootstrap's LPM3.5. Open question:
+  the V3 pads may be *capacitive touch* rather than short-to-ground buttons — if
+  so this module needs rework; confirm on hardware.
 
-Remaining: Task 5 (buttons + LPM3.5), Task 6 (set-time UI), Task 7 (power
-profiling). The caliper-LCD + colon/PM integration with the RTC lands when the
-V3 boards arrive (currently Task 4 displays on the LaunchPad glass).
+Remaining: Task 6 (set-time UI), Task 7 (power profiling). The caliper-LCD +
+colon/PM integration with the RTC lands when the V3 boards arrive (currently
+Tasks 4–5 display on the LaunchPad glass).
 
 ## References
 
