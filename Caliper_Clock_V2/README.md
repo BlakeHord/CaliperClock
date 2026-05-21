@@ -53,11 +53,11 @@ A low-power digital clock built using a salvaged LCD display from a digital cali
 
 ## PCB Designs
 
-The repository includes KiCad PCB designs:
+The repository is organized into one folder per board revision:
 
-- **Caliper_Clock/** — Main board (V1)
-- **Caliper_Clock_V2/** — Revised board design
-- **Caliper_Clock_Test_Board/** — Test/development board
+- **Caliper_Clock_V1/** — Original board (includes the `Caliper_Clock_Test_Board/` test/development board)
+- **Caliper_Clock_V2/** — Revised board design (also contains this firmware and tooling)
+- **Caliper_Clock_V3/** — MSP430FR4133-based redesign (includes the `MSP430FR4133IPM/` symbol library)
 
 Each folder contains:
 - KiCad schematic (`.kicad_sch`)
