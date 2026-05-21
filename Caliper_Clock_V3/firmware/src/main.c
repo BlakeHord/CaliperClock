@@ -7,6 +7,7 @@
  *   make BRINGUP=1 flash   -> Task 1: blink LaunchPad LED2 (toolchain check)
  *   make BRINGUP=2 flash   -> Task 2: LCD_E displays "HELLO" on the LaunchPad
  *   make BRINGUP=3 flash   -> Task 3: caliper LCD segment scan (V3 board only)
+ *   make BRINGUP=4 flash   -> Task 4: XT1+RTC timekeeping demo on the LaunchPad
  *
  * Higher tasks (RTC, buttons, LPM3.5, set-time, the real caliper LCD) get added
  * as they're implemented. BRINGUP defaults to the highest test in the Makefile.
@@ -64,6 +65,44 @@ int main(void)
     return 0;
 }
 
+#elif BRINGUP == 4          /* ---- Task 4: XT1+RTC timekeeping (LaunchPad) ---- */
+
+#include "hal_lcd.h"
+#include "rtc_clock.h"
+
+/* Validates the timekeeping engine on the LaunchPad: time on the FH-1138P glass
+ * (HH MM), LED2 toggling at 1 Hz as the "RTC is ticking" heartbeat. The caliper
+ * glass + colon/PM integration happens on the V3 board. */
+int main(void)
+{
+    board_init();
+    clock_init_xt1();                 /* ACLK <- 32.768 kHz crystal */
+    rtc_init();                       /* 1 Hz RTC interrupt */
+    hal_lcd_init();
+    clock_set(12, 0);                 /* start at 12:00 */
+
+    P4DIR |= BIT0;                    /* LED2 (P4.0) = 1 Hz heartbeat */
+    __enable_interrupt();
+
+    for (;;) {
+        if (clock_tick) {
+            uint8_t h12, pm;
+            char buf[5];
+            clock_tick = 0;
+            P4OUT ^= BIT0;            /* heartbeat */
+
+            clock_get_12h(&h12, &pm);
+            buf[0] = (h12 >= 10) ? '0' + h12 / 10 : ' ';  /* blank leading zero */
+            buf[1] = '0' + h12 % 10;
+            buf[2] = '0' + clock_min / 10;
+            buf[3] = '0' + clock_min % 10;
+            buf[4] = '\0';
+            hal_lcd_display(buf);
+        }
+        __bis_SR_register(LPM3_bits | GIE);   /* sleep until the next RTC tick */
+    }
+}
+
 #else
-#error "Unknown BRINGUP value (expected 1, 2, or 3)"
+#error "Unknown BRINGUP value (expected 1, 2, 3, or 4)"
 #endif

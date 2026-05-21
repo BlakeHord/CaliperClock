@@ -1,0 +1,93 @@
+/*
+ * rtc_clock.c -- XT1 + RTC counter timekeeping (Task 4). See rtc_clock.h.
+ *
+ * Register choices cite SLAU445 (CS, ch.3; RTC counter, ch.15) and the device
+ * datasheet (XIN/XOUT pin select). All verified against ../Datasheets/.
+ */
+
+#include <msp430.h>
+#include <stdint.h>
+#include "rtc_clock.h"
+
+volatile uint8_t clock_sec    = 0;
+volatile uint8_t clock_min    = 0;
+volatile uint8_t clock_hour24 = 12;     /* arbitrary power-on default (12:00) */
+volatile uint8_t clock_colon  = 1;
+volatile uint8_t clock_tick   = 0;
+
+void clock_init_xt1(void)
+{
+    /* P4.1 = XIN, P4.2 = XOUT. Datasheet Table 9-18: the crystal function is
+     * selected by P4SEL0.1 / P4SEL0.2 = 1 (PSEL1 not involved). */
+    P4SEL0 |= BIT1 | BIT2;
+
+    /* CSCTL6 reset (0x08C1) already gives LF mode (XTS=0), internal crystal
+     * (XT1BYPASS=0), and highest drive for reliable startup. Clear XT1AUTOOFF
+     * so XT1 stays on -- the LCD and RTC need ACLK continuously anyway.
+     * (SLAU445 §3.3.7) */
+    CSCTL6 &= ~XT1AUTOOFF;
+
+    /* Start XT1 and wait until it is fault-free: repeatedly clear the oscillator
+     * fault flags until OFIFG stays low (SLAU445 §3.2.11 Fault Handling). */
+    do {
+        CSCTL7 &= ~(XT1OFFG | DCOFFG);
+        SFRIFG1 &= ~OFIFG;
+    } while (SFRIFG1 & OFIFG);
+
+    /* ACLK <- XT1 (SELA = XT1 = 0; reset default is REFO). DIVA is bypassed for
+     * XT1 in LF mode, so ACLK = 32.768 kHz. (SLAU445 §3.3.5) */
+    CSCTL4 &= ~SELA__REFOCLK;
+}
+
+void rtc_init(void)
+{
+    /* 1 Hz: XT1 (32768 Hz) / 1024 (RTCPS) = 32 Hz. The RTC counter overflows when
+     * RTCCNT *reaches* RTCMOD and resets to 0, so the period is RTCMOD ticks (NOT
+     * RTCMOD+1 -- unlike Timer_A up mode; SLAU445 §15.2.1). 32 ticks / 32 Hz =
+     * 1 Hz, so RTCMOD = 32. */
+    RTCMOD = 32;
+
+    /* Source = XT1, predivide /1024, interrupt enabled. RTCSR loads the modulo
+     * into the shadow register and resets the counter (TI-recommended after
+     * selecting the source). */
+    RTCCTL = RTCSS__XT1CLK | RTCPS__1024 | RTCIE | RTCSR;
+}
+
+void clock_set(uint8_t hour24, uint8_t minute)
+{
+    /* Pause just the RTC interrupt so the second/minute/hour cascade can't run
+     * mid-update; no effect on the global interrupt state. */
+    RTCCTL &= ~RTCIE;
+    clock_hour24 = hour24 % 24;
+    clock_min    = minute % 60;
+    clock_sec    = 0;
+    RTCCTL |= RTCIE;
+}
+
+void clock_get_12h(uint8_t *hour12, uint8_t *pm)
+{
+    uint8_t h = clock_hour24;
+    if (h == 0)        { *hour12 = 12; *pm = 0; }
+    else if (h < 12)   { *hour12 = h;  *pm = 0; }
+    else if (h == 12)  { *hour12 = 12; *pm = 1; }
+    else               { *hour12 = h - 12; *pm = 1; }
+}
+
+/* RTC overflow -> 1 Hz. Reading RTCIV clears the flag. */
+void __attribute__((interrupt(RTC_VECTOR))) rtc_isr(void)
+{
+    (void)RTCIV;                        /* clear RTCIFG */
+
+    if (++clock_sec >= 60) {
+        clock_sec = 0;
+        if (++clock_min >= 60) {
+            clock_min = 0;
+            if (++clock_hour24 >= 24)
+                clock_hour24 = 0;
+        }
+    }
+    clock_colon ^= 1;
+    clock_tick = 1;
+
+    __bic_SR_register_on_exit(LPM3_bits);   /* wake main to refresh the display */
+}

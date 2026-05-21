@@ -76,8 +76,8 @@ LaunchPad and retry (a known macOS eZ-FET quirk).
 
 The point is to build confidence one layer at a time: each step has a flashable
 test and a concrete "you should see X" so a failure is isolated to the layer you
-just added — instead of debugging a whole clock at once. Steps 1–3 are implemented
-(3 runs only on a V3 board); 4–7 are the planned checkpoints (the roadmap).
+just added — instead of debugging a whole clock at once. Steps 1–4 are implemented
+(3 runs only on a V3 board); 5–7 are the planned checkpoints (the roadmap).
 
 Run each on the **LaunchPad** first; once the custom V3 boards arrive, repeat the
 hardware-dependent ones (LCD, buttons, power) on the real board.
@@ -87,7 +87,7 @@ hardware-dependent ones (LCD, buttons, power) on the real board.
 | 1 | `make BRINGUP=1 flash` | Toolchain + flash path + the chip is alive | LaunchPad LED2 (P4.0) blinks ~1 Hz |
 | 2 | `make BRINGUP=2 flash` | LCD_E peripheral: 4-mux, charge-pump bias, ACLK, pin mux | LaunchPad glass shows **HELLO** (steady, readable contrast) |
 | 3 | `make BRINGUP=3 flash` (V3 board only) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM); record the mapping and correct `HT1621_ADDR_TO_LCDE_SEG[]` |
-| 4 | *(planned)* RTC on XT1 | 32.768 kHz crystal + RTC keep time; ACLK moved off REFO | Colon blinks 1 Hz; minutes advance |
+| 4 | `make BRINGUP=4 flash` (LaunchPad) | XT1 32.768 kHz + RTC 1 Hz tick keeps time | LED2 blinks 1 Hz; displayed time advances (minutes roll over) |
 | 5 | *(planned)* buttons + LPM3.5 | P1.0–1.2 wake from deep sleep; debounce | Button press wakes and registers; idles in LPM3.5 |
 | 6 | *(planned)* set-time UI | Long-press MODE, hour/min adjust, commit | Time can be set and is retained |
 | 7 | *(planned)* power profiling | Meets the ~µA budget | LPM3.5+LCD < 2 µA on a meter |
@@ -112,9 +112,16 @@ Notes:
   verbatim; the V2→V3 segment-line translation is one flagged table
   (`HT1621_ADDR_TO_LCDE_SEG[]`) resolved by the scan test on real hardware.
   `lcd_show_4digit` + scan test build clean. Can't run until V3 boards exist.
+- **Task 4 (done, LaunchPad-testable):** `src/rtc_clock.c` sources ACLK from the
+  32.768 kHz XT1 crystal and runs the RTC counter at 1 Hz, maintaining
+  sec/min/hour with 24→12 conversion (ported from V2). All register choices
+  datasheet-verified (SLAU445 CS ch.3 + RTC ch.15, Table 9-18 for XIN/XOUT).
+  `BRINGUP=4` demos it on the LaunchPad (time on the glass + LED2 heartbeat),
+  sleeping in LPM3 between ticks.
 
-Remaining: Task 4 (RTC), Task 5 (buttons + LPM3.5), Task 6 (set-time UI),
-Task 7 (power profiling).
+Remaining: Task 5 (buttons + LPM3.5), Task 6 (set-time UI), Task 7 (power
+profiling). The caliper-LCD + colon/PM integration with the RTC lands when the
+V3 boards arrive (currently Task 4 displays on the LaunchPad glass).
 
 ## References
 
