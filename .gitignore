@@ -16,9 +16,13 @@ Thumbs.db
 
 # KiCad backup files
 *-backups/
+# KiCad editor lock files
+*.lck
 
 # Editor files
 *.swp
 *.swo
 *~
 
+# Local Claude Code config
+.claude/

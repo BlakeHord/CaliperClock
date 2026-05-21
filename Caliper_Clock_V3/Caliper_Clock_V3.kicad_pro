@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.0,
-          "height": 4.0,
-          "width": 1.8
+          "drill": 0.8,
+          "height": 1.27,
+          "width": 2.54
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -451,7 +451,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "Caliper_Clock_V2.kicad_pro",
+    "filename": "Caliper_Clock_V3.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -487,8 +487,8 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "./",
-      "pos_files": "./",
+      "plot": "",
+      "pos_files": "",
       "specctra_dsn": "",
       "step": "",
       "svg": "",
@@ -611,7 +611,7 @@
   },
   "sheets": [
     [
-      "c6914760-0ce1-4155-bdd1-3757584019db",
+      "802dda36-93fb-4ec2-b0ed-522fd3af0e85",
       "Root"
     ]
   ],

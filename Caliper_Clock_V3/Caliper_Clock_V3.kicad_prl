@@ -15,7 +15,6 @@
       "vias": 1.0,
       "zones": 0.6
     },
-    "ratsnest_display_mode": 0,
     "selection_filter": {
       "dimensions": true,
       "footprints": true,
@@ -40,18 +39,15 @@
       "footprint_values",
       "footprint_references",
       "tracks",
-      "drc_errors",
       "drawing_sheet",
       "bitmaps",
       "pads",
       "zones",
-      "drc_warnings",
-      "drc_exclusions",
       "locked_item_shadows",
       "conflict_shadows",
       "shapes"
     ],
-    "visible_layers": "00000000_00000000_0fffffff_ffffffff",
+    "visible_layers": "ffffffff_ffffffff_ffffffff_ffffffff",
     "zone_display_mode": 0
   },
   "git": {
@@ -60,7 +56,7 @@
     "ssh_key": ""
   },
   "meta": {
-    "filename": "Caliper_Clock_V2.kicad_prl",
+    "filename": "Caliper_Clock_V3.kicad_prl",
     "version": 5
   },
   "net_inspector_panel": {
@@ -89,16 +85,16 @@
       9
     ],
     "col_widths": [
-      186,
-      171,
-      112,
-      79,
-      112,
-      112,
-      112,
-      83,
-      112,
-      0
+      156,
+      141,
+      103,
+      71,
+      103,
+      103,
+      103,
+      74,
+      103,
+      103
     ],
     "custom_group_rules": [],
     "expanded_rows": [],
