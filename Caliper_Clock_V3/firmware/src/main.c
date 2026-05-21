@@ -1,46 +1,56 @@
 /*
- * Caliper Clock V3 -- Task 1 toolchain-verification stub.
+ * Caliper Clock V3 -- bring-up entry point.
  *
- * Blinks the MSP-EXP430FR4133 LaunchPad's onboard LED2 (P4.0, green) at ~1 Hz.
+ * Selects one bring-up test at compile time so each layer can be flashed and
+ * verified on its own (see README "Bring-up sequence"):
  *
- * Purpose: prove the MSP430-GCC build + mspdebug(tilib) flash path works end to
- * end on the LaunchPad. This is NOT the real firmware -- it uses a busy-delay,
- * not the RTC, and does none of the low-power setup. Tasks 2-7 replace it.
+ *   make BRINGUP=1 flash   -> Task 1: blink LaunchPad LED2 (toolchain check)
+ *   make BRINGUP=2 flash   -> Task 2: LCD_E displays "HELLO" on the LaunchPad
  *
- * Pin choice: LED2 = P4.0 on the FR4133 LaunchPad (TI convention; confirm
- * against the board silkscreen / SLAU595 if in doubt). We deliberately avoid
- * P1.0 (LED1) because P1.0-P1.2 are the V3 capacitive buttons -- keeping the
- * blink test off P1 stops it from being confused with the real button pins.
- * The toolchain check only needs the pin to toggle, so a scope on P4.0 proves
- * it even with no LED.
+ * Higher tasks (RTC, buttons, LPM3.5, set-time, the real caliper LCD) get added
+ * as they're implemented. BRINGUP defaults to the highest test in the Makefile.
  */
 
 #include <msp430.h>
 
+#ifndef BRINGUP
+#define BRINGUP 2
+#endif
+
+/* Common board init: stop watchdog, unlock GPIO/LCD pins out of the
+ * power-up high-Z state (FR4xx LPMx.5 lock; SLAU445 Digital I/O). */
+static void board_init(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;
+    PM5CTL0 &= ~LOCKLPM5;
+}
+
+#if BRINGUP == 1            /* ---- Task 1: blink LED2 (P4.0) ~1 Hz ---- */
+
 int main(void)
 {
-    WDTCTL = WDTPW | WDTHOLD;        /* Stop the watchdog (SLAU445 WDT_A). */
-
-    /*
-     * FR4xx I/O powers up locked in a high-impedance state (the same mechanism
-     * used to hold pins through LPMx.5). Until LOCKLPM5 is cleared, writes to
-     * PxDIR/PxOUT do not reach the pins. (SLAU445, Digital I/O -> "LPMx.5".)
-     */
-    PM5CTL0 &= ~LOCKLPM5;
-
-    P4DIR |=  BIT0;                  /* P4.0 (LED2) as output */
-    P4OUT &= ~BIT0;                  /* start off */
-
+    board_init();
+    P4DIR |=  BIT0;
+    P4OUT &= ~BIT0;
     for (;;) {
-        P4OUT ^= BIT0;              /* toggle LED2 */
-
-        /*
-         * Crude ~0.5 s delay -> ~1 Hz blink. After PUC the CS module defaults
-         * MCLK to ~1 MHz (verify in SLAU445 "Clock System"); at 1 MHz, 500k
-         * cycles ~= 0.5 s. Good enough to eyeball. Real timing arrives in
-         * Task 4 via XT1 (32.768 kHz) + the RTC. __delay_cycles is a TI GCC
-         * builtin and needs a compile-time-constant argument.
-         */
-        __delay_cycles(500000);
+        P4OUT ^= BIT0;
+        __delay_cycles(500000);   /* ~0.5 s at ~1 MHz default MCLK */
     }
 }
+
+#elif BRINGUP == 2          /* ---- Task 2: LCD_E "HELLO" ---- */
+
+#include "hal_lcd.h"
+
+int main(void)
+{
+    board_init();
+    hal_lcd_init();
+    hal_lcd_display("HELLO");
+    for (;;)
+        __delay_cycles(1000000);  /* hold the display; nothing else yet */
+}
+
+#else
+#error "Unknown BRINGUP value (expected 1 or 2)"
+#endif

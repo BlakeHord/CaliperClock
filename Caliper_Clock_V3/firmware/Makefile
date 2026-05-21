@@ -19,6 +19,10 @@ SUPPORT_DIR ?= /opt/local/msp430-elf/include
 # which lives in /opt/local/lib. tilib won't load it without this on macOS.
 MSPDEBUG_ENV = DYLD_LIBRARY_PATH=/opt/local/lib
 
+# Which bring-up test to build (see src/main.c / README "Bring-up sequence").
+# 1 = blink LED2, 2 = LCD_E "HELLO". Override on the command line: make BRINGUP=1
+BRINGUP ?= 2
+
 # ---- Layout -----------------------------------------------------------------
 SRC_DIR   = src
 INC_DIR   = inc
@@ -33,7 +37,7 @@ ELF  = $(BIN_DIR)/$(TARGET).elf
 # ---- Flags ------------------------------------------------------------------
 # -Os: optimize for size (FRAM is precious). -g: keep debug symbols.
 # -ffunction-sections/-fdata-sections + --gc-sections: drop unused code/data.
-CFLAGS  = -mmcu=$(MCU) -Os -g -std=gnu11 -Wall -Wextra \
+CFLAGS  = -mmcu=$(MCU) -Os -g -std=gnu11 -Wall -Wextra -DBRINGUP=$(BRINGUP) \
           -ffunction-sections -fdata-sections -I$(INC_DIR)
 LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections
 
