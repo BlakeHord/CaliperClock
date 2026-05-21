@@ -87,7 +87,7 @@ hardware-dependent ones (LCD, buttons, power) on the real board.
 | 1 | `make BRINGUP=1 flash` | Toolchain + flash path + the chip is alive | LaunchPad LED2 (P4.0) blinks ~1 Hz |
 | 2 | `make BRINGUP=2 flash` | LCD_E peripheral: 4-mux, charge-pump bias, ACLK, pin mux | LaunchPad glass shows **HELLO** (steady, readable contrast) |
 | 3 | `make BRINGUP=3 flash` (V3 board only) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM); record the mapping and correct `HT1621_ADDR_TO_LCDE_SEG[]` |
-| 4 | `make BRINGUP=4 flash` (LaunchPad) | XT1 32.768 kHz + RTC 1 Hz tick keeps time | LED2 blinks 1 Hz; displayed time advances (minutes roll over) |
+| 4 | `make BRINGUP=4 flash` (LaunchPad) | XT1 32.768 kHz + RTC 1 Hz tick keeps time | LED2 toggles every **1.000 s** (time it vs. a reference to confirm `RTCMOD`); displayed time advances (minutes roll over) |
 | 5 | `make BRINGUP=5 flash` | P1.0–1.2 wake from LPM3; 50 ms debounce | Button to GND shows MODE/HOUR/MIN + toggles LED2; idles in LPM3 |
 | 6 | `make BRINGUP=6 flash` (LaunchPad) | Full clock + set-time UI (RTC+buttons+display) | Time advances; 5 s MODE-hold enters set (digits flash); HOUR/MIN adjust; MODE commits |
 | 7 | power profiling (see below) | Meets the ~µA budget | LPM3 + LCD ≈ 1–2 µA on a meter / EnergyTrace |

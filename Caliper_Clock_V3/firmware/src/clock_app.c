@@ -15,12 +15,22 @@
 
 /* ~20 ms UI tick at ACLK 32768 Hz: 0.020 * 32768 = 655. */
 #define UI_TICK_TICKS   655
-#define LONGPRESS_TICKS 250   /* 5 s  / 20 ms (enter set mode) */
-#define HOLD_REPEAT     20    /* 400 ms / 20 ms (auto-repeat threshold, per V2) */
+#define LONGPRESS_TICKS 250   /* 5 s   / 20 ms (MODE hold to enter set mode) */
+#define HOLD_DELAY      20    /* 400 ms / 20 ms before auto-repeat begins */
+#define REPEAT_EVERY    6     /* then step every 6 ticks (~120 ms), not every tick */
 #define FLASH_PERIOD    35    /* 700 ms / 20 ms (per V2) */
 #define FLASH_BLANK     5     /* 100 ms blank within each flash period */
+#define SETMODE_TIMEOUT 1500  /* 30 s with no button held -> auto-commit and exit */
 
 static volatile uint8_t ui_tick = 0;
+
+/* Whether a held HOUR/MIN button should advance its digit this tick: once on the
+ * initial press (hold==0), then every REPEAT_EVERY ticks after HOLD_DELAY. */
+static uint8_t hold_step(uint16_t hold)
+{
+    return (hold == 0) ||
+           (hold >= HOLD_DELAY && ((hold - HOLD_DELAY) % REPEAT_EVERY) == 0);
+}
 
 static void ui_timer_start(void)
 {
@@ -66,11 +76,10 @@ done:
 static void run_set_mode(clock_display_fn show)
 {
     uint8_t  h12, pm, mn;
-    uint16_t loop = 0, hour_hold = 0, min_hold = 0;
+    uint16_t loop = 0, hour_hold = 0, min_hold = 0, idle = 0;
     uint8_t  hour24;
 
-    clock_get_12h(&h12, &pm);
-    mn = clock_min;
+    clock_read(&h12, &mn, &pm);
 
     ui_timer_start();
 
@@ -79,34 +88,44 @@ static void run_set_mode(clock_display_fn show)
         ui_wait();
 
     for (;;) {
+        uint8_t mode_down, hour_down, min_down;
         ui_wait();
         loop++;
 
         /* Flash the digits: blank for FLASH_BLANK ticks of each FLASH_PERIOD. */
         show(h12, mn, clock_colon, pm, (loop % FLASH_PERIOD) < FLASH_BLANK);
 
-        /* HOUR: step once on press, then auto-repeat after HOLD_REPEAT ticks. */
-        if (buttons_is_down(BTN_HOUR)) {
-            if (hour_hold == 0 || hour_hold >= HOLD_REPEAT) {
-                if (++h12 > 12) h12 = 1;
-            }
+        mode_down = buttons_is_down(BTN_MODE);
+        hour_down = buttons_is_down(BTN_HOUR);
+        min_down  = buttons_is_down(BTN_MIN);
+
+        /* HOUR: step once on press, then auto-repeat at REPEAT_EVERY after the
+         * initial HOLD_DELAY (so a held button steps a few times/second, not 50). */
+        if (hour_down) {
+            if (hold_step(hour_hold) && ++h12 > 12) h12 = 1;
             hour_hold++;
         } else {
             hour_hold = 0;
         }
 
         /* MIN: same hold-to-repeat behaviour. */
-        if (buttons_is_down(BTN_MIN)) {
-            if (min_hold == 0 || min_hold >= HOLD_REPEAT) {
-                if (++mn > 59) mn = 0;
-            }
+        if (min_down) {
+            if (hold_step(min_hold) && ++mn > 59) mn = 0;
             min_hold++;
         } else {
             min_hold = 0;
         }
 
         /* A new MODE press commits and exits. */
-        if (buttons_is_down(BTN_MODE))
+        if (mode_down)
+            break;
+
+        /* Auto-exit if abandoned: no button held for SETMODE_TIMEOUT ticks
+         * (guards against a stuck/abandoned set mode, esp. if the pads are
+         * capacitive). Any held button keeps the session alive. */
+        if (mode_down || hour_down || min_down)
+            idle = 0;
+        else if (++idle >= SETMODE_TIMEOUT)
             break;
     }
 
@@ -122,25 +141,41 @@ static void run_set_mode(clock_display_fn show)
 
 void clock_app_run(clock_display_fn show)
 {
-    uint8_t h12, pm;
+    uint8_t h12, mn, pm;
 
-    clock_get_12h(&h12, &pm);
-    show(h12, clock_min, clock_colon, pm, 0);
+    clock_read(&h12, &mn, &pm);
+    show(h12, mn, clock_colon, pm, 0);
 
+    /*
+     * Sleep/wake with no lost-wakeup race: disable interrupts, then test the
+     * pending work with interrupts off. If there's work, re-enable and handle
+     * it; otherwise __bis_SR_register(LPM3|GIE) atomically enters LPM3 and sets
+     * GIE, so an interrupt that becomes pending exactly then still wakes us.
+     */
     for (;;) {
-        if (clock_tick) {               /* 1 Hz: refresh time + blink colon */
+        button_t e;
+
+        __disable_interrupt();
+
+        if (clock_tick) {                 /* 1 Hz: refresh time + colon */
             clock_tick = 0;
-            clock_get_12h(&h12, &pm);
-            show(h12, clock_min, clock_colon, pm, 0);
+            __enable_interrupt();
+            clock_read(&h12, &mn, &pm);
+            show(h12, mn, clock_colon, pm, 0);
+            continue;
         }
 
-        if (buttons_get_event() == BTN_MODE && mode_long_press()) {
-            run_set_mode(show);
-            clock_get_12h(&h12, &pm);
-            show(h12, clock_min, clock_colon, pm, 0);
+        e = buttons_get_event();          /* leaves GIE off (saved off here) */
+        if (e != BTN_NONE) {
+            __enable_interrupt();
+            if (e == BTN_MODE && mode_long_press())
+                run_set_mode(show);
+            clock_read(&h12, &mn, &pm);
+            show(h12, mn, clock_colon, pm, 0);
+            continue;
         }
 
-        __bis_SR_register(LPM3_bits | GIE);
+        __bis_SR_register(LPM3_bits | GIE);   /* nothing pending: sleep */
     }
 }
 

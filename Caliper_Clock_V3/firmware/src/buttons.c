@@ -64,7 +64,11 @@ uint8_t buttons_is_down(button_t b)
 }
 
 /* Falling edge on a button: latch the press, then mask the buttons and start
- * the 50 ms debounce window. */
+ * the 50 ms debounce window. If two buttons fall in the same edge, only the
+ * highest-priority one (MODE > HOUR > MIN) is reported and the others are
+ * dropped -- fine for this UI, which never needs a chord. While the 50 ms
+ * window runs, a *different* button's press is also ignored; the time-setting
+ * UI sidesteps this by polling buttons_is_down() rather than events. */
 void __attribute__((interrupt(PORT1_VECTOR))) port1_isr(void)
 {
     uint8_t flags = P1IFG & BTN_ALL;

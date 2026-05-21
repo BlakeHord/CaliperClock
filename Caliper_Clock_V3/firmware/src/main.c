@@ -99,22 +99,27 @@ int main(void)
     P4DIR |= BIT0;                    /* LED2 (P4.0) = 1 Hz heartbeat */
     __enable_interrupt();
 
+    /* Disable interrupts to test the flag atomically with entering LPM3, so an
+     * RTC tick that fires just before sleep isn't slept through (lost wakeup). */
     for (;;) {
+        __disable_interrupt();
         if (clock_tick) {
-            uint8_t h12, pm;
+            uint8_t h12, mn, pm;
             char buf[5];
             clock_tick = 0;
+            __enable_interrupt();
             P4OUT ^= BIT0;            /* heartbeat */
 
-            clock_get_12h(&h12, &pm);
+            clock_read(&h12, &mn, &pm);
             buf[0] = (h12 >= 10) ? '0' + h12 / 10 : ' ';  /* blank leading zero */
             buf[1] = '0' + h12 % 10;
-            buf[2] = '0' + clock_min / 10;
-            buf[3] = '0' + clock_min % 10;
+            buf[2] = '0' + mn / 10;
+            buf[3] = '0' + mn % 10;
             buf[4] = '\0';
             hal_lcd_display(buf);
+        } else {
+            __bis_SR_register(LPM3_bits | GIE);   /* sleep until next RTC tick */
         }
-        __bis_SR_register(LPM3_bits | GIE);   /* sleep until the next RTC tick */
     }
 }
 
@@ -135,9 +140,15 @@ int main(void)
     P4DIR |= BIT0;
     __enable_interrupt();
 
+    /* Atomic test-and-sleep (see Task 4) so a press just before LPM3 entry is
+     * not slept through. buttons_get_event() preserves the (disabled) interrupt
+     * state, so it can be called inside the critical section. */
     for (;;) {
-        button_t e = buttons_get_event();
+        button_t e;
+        __disable_interrupt();
+        e = buttons_get_event();
         if (e != BTN_NONE) {
+            __enable_interrupt();
             P4OUT ^= BIT0;
             switch (e) {
             case BTN_MODE: hal_lcd_display("MODE"); break;
@@ -145,8 +156,9 @@ int main(void)
             case BTN_MIN:  hal_lcd_display("MIN");  break;
             default: break;
             }
+        } else {
+            __bis_SR_register(LPM3_bits | GIE);   /* sleep until a button wakes us */
         }
-        __bis_SR_register(LPM3_bits | GIE);   /* sleep until a button wakes us */
     }
 }
 

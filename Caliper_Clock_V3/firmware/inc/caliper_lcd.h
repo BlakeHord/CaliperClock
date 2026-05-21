@@ -24,9 +24,10 @@ void caliper_lcd_clear(void);
  * COM index (0..3). Translated to a V3 LCD_E segment line internally. */
 void caliper_lcd_set_segment(uint8_t ht_addr, uint8_t com, uint8_t on);
 
-/* Render a 4-digit value as HH:MM style (e.g. 1234 -> "12:34"), with leading-
- * zero blanking on the hours, plus optional colon and PM indicator. Mirrors
- * V2's lcd_show_4digit. */
+/* Render a 4-digit value as HH:MM, with leading-zero blanking on the hours, plus
+ * optional colon and PM indicator. `value` must be packed as hour*100 + minute
+ * (e.g. 12:34 -> 1234), range 0..9999; minutes must be 0..59. Mirrors V2's
+ * lcd_show_4digit. */
 void caliper_lcd_show_4digit(uint16_t value, uint8_t colon_on, uint8_t pm_on);
 
 /* Bring-up diagnostic: light each physical (segment line, COM) one at a time,

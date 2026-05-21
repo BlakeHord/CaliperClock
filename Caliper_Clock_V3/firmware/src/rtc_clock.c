@@ -41,10 +41,13 @@ void clock_init_xt1(void)
 
 void rtc_init(void)
 {
-    /* 1 Hz: XT1 (32768 Hz) / 1024 (RTCPS) = 32 Hz. The RTC counter overflows when
-     * RTCCNT *reaches* RTCMOD and resets to 0, so the period is RTCMOD ticks (NOT
-     * RTCMOD+1 -- unlike Timer_A up mode; SLAU445 §15.2.1). 32 ticks / 32 Hz =
-     * 1 Hz, so RTCMOD = 32. */
+    /* 1 Hz: XT1 (32768 Hz) / 1024 (RTCPS) = 32 Hz. Per SLAU445 §15.2.1 the RTC
+     * counter overflows when RTCCNT *reaches* the modulo value and resets to 0,
+     * so the period is RTCMOD ticks -- NOT RTCMOD+1 like Timer_A up mode. Hence
+     * 32 ticks / 32 Hz = 1 Hz exactly, so RTCMOD = 32 (NOT 31).
+     * Empirical check for bring-up: the BRINGUP=4 LED2 heartbeat must toggle
+     * every 1.000 s against a reference; if it's ~1.03 s, the period convention
+     * is +1 and this should be 31. (Datasheet says 32.) */
     RTCMOD = 32;
 
     /* Source = XT1, predivide /1024, interrupt enabled. RTCSR loads the modulo
@@ -61,16 +64,36 @@ void clock_set(uint8_t hour24, uint8_t minute)
     clock_hour24 = hour24 % 24;
     clock_min    = minute % 60;
     clock_sec    = 0;
+    /* Reset the counter so the first second after a set is a full second (not
+     * whatever fraction was left), reloading the modulo. RTCSR does not raise an
+     * interrupt (SLAU445 §15.2.1). */
+    RTCCTL |= RTCSR;
+    (void)RTCIV;                /* drop any overflow that latched while masked */
     RTCCTL |= RTCIE;
 }
 
-void clock_get_12h(uint8_t *hour12, uint8_t *pm)
+/* 24h -> 12h, as in V2. */
+static void to_12h(uint8_t h24, uint8_t *hour12, uint8_t *pm)
 {
-    uint8_t h = clock_hour24;
-    if (h == 0)        { *hour12 = 12; *pm = 0; }
-    else if (h < 12)   { *hour12 = h;  *pm = 0; }
-    else if (h == 12)  { *hour12 = 12; *pm = 1; }
-    else               { *hour12 = h - 12; *pm = 1; }
+    if (h24 == 0)        { *hour12 = 12; *pm = 0; }
+    else if (h24 < 12)   { *hour12 = h24; *pm = 0; }
+    else if (h24 == 12)  { *hour12 = 12; *pm = 1; }
+    else                 { *hour12 = h24 - 12; *pm = 1; }
+}
+
+void clock_read(uint8_t *hour12, uint8_t *minute, uint8_t *pm)
+{
+    uint8_t h24, mn;
+
+    /* Snapshot hour+minute together with the cascade ISR masked, so we never
+     * read a new minute against an old hour at the :00 rollover. */
+    RTCCTL &= ~RTCIE;
+    h24 = clock_hour24;
+    mn  = clock_min;
+    RTCCTL |= RTCIE;
+
+    *minute = mn;
+    to_12h(h24, hour12, pm);
 }
 
 /* RTC overflow -> 1 Hz. Reading RTCIV clears the flag. */

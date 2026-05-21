@@ -156,6 +156,8 @@ void caliper_lcd_clear(void)
 void caliper_lcd_set_segment(uint8_t ht_addr, uint8_t com, uint8_t on)
 {
     uint8_t lcde_seg;
+    if (com > 3)                        /* 4-mux: only COM0..3 exist */
+        return;
     if (ht_addr == SEG_EMPTY || ht_addr >= sizeof(HT1621_ADDR_TO_LCDE_SEG))
         return;
     lcde_seg = HT1621_ADDR_TO_LCDE_SEG[ht_addr];

@@ -23,10 +23,13 @@ void clock_init_xt1(void);
 /* Start the RTC counter for a 1 Hz interrupt. Requires clock_init_xt1() first. */
 void rtc_init(void);
 
-/* Set the time (24h). Safe against the RTC ISR. */
+/* Set the time (24h). Safe against the RTC ISR; restarts a full second. */
 void clock_set(uint8_t hour24, uint8_t minute);
 
-/* 12-hour view of the current time (ported from V2's rtc_24h_to_12h). */
-void clock_get_12h(uint8_t *hour12, uint8_t *pm);
+/* Atomic snapshot of the current time as 12-hour + minute + PM flag. Reads
+ * hour and minute together with the RTC interrupt briefly masked, so the
+ * display can't catch a torn value across a minute/hour rollover. The 24->12
+ * conversion is ported from V2's rtc_24h_to_12h. */
+void clock_read(uint8_t *hour12, uint8_t *minute, uint8_t *pm);
 
 #endif /* RTC_CLOCK_H */
