@@ -76,8 +76,8 @@ LaunchPad and retry (a known macOS eZ-FET quirk).
 
 The point is to build confidence one layer at a time: each step has a flashable
 test and a concrete "you should see X" so a failure is isolated to the layer you
-just added — instead of debugging a whole clock at once. Steps 1–5 are implemented
-(3 runs only on a V3 board); 6–7 are the planned checkpoints (the roadmap).
+just added — instead of debugging a whole clock at once. Steps 1–6 are implemented
+(3 runs only on a V3 board); step 7 is the on-hardware power-measurement task.
 
 Run each on the **LaunchPad** first; once the custom V3 boards arrive, repeat the
 hardware-dependent ones (LCD, buttons, power) on the real board.
@@ -89,8 +89,8 @@ hardware-dependent ones (LCD, buttons, power) on the real board.
 | 3 | `make BRINGUP=3 flash` (V3 board only) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM); record the mapping and correct `HT1621_ADDR_TO_LCDE_SEG[]` |
 | 4 | `make BRINGUP=4 flash` (LaunchPad) | XT1 32.768 kHz + RTC 1 Hz tick keeps time | LED2 blinks 1 Hz; displayed time advances (minutes roll over) |
 | 5 | `make BRINGUP=5 flash` | P1.0–1.2 wake from LPM3; 50 ms debounce | Button to GND shows MODE/HOUR/MIN + toggles LED2; idles in LPM3 |
-| 6 | *(planned)* set-time UI | Long-press MODE, hour/min adjust, commit | Time can be set and is retained |
-| 7 | *(planned)* power profiling | Meets the ~µA budget | LPM3 + LCD < ~2 µA on a meter |
+| 6 | `make BRINGUP=6 flash` (LaunchPad) | Full clock + set-time UI (RTC+buttons+display) | Time advances; 5 s MODE-hold enters set (digits flash); HOUR/MIN adjust; MODE commits |
+| 7 | power profiling (see below) | Meets the ~µA budget | LPM3 + LCD ≈ 1–2 µA on a meter / EnergyTrace |
 
 Notes:
 - **Step 2 caveat:** the FH-1138P glass on the LaunchPad has a *different* pinout
@@ -129,13 +129,58 @@ Notes:
   **LPM3** (see sleep-mode note above), not the bootstrap's LPM3.5. Open question:
   the V3 pads may be *capacitive touch* rather than short-to-ground buttons — if
   so this module needs rework; confirm on hardware.
+- **Task 6 (done, LaunchPad-testable):** `src/clock_app.c` — display + time-setting
+  state machine ported from V2 (5 s MODE long-press to enter; HOUR/MIN with
+  hold-to-repeat; ~100 ms/700 ms digit flash; short MODE commits to the RTC).
+  Display-abstracted via a callback; `BRINGUP=6` runs the whole clock on the
+  LaunchPad. Timer_A1 provides the 20 ms UI tick, only running during an
+  interaction. AM/PM isn't toggled while setting (mirrors V2) — flagged below.
+- **Task 7 (low-power init done; measurement pending hardware):** `board_init()`
+  now drives all pins output-low (SLAS865 §7.4) so unused pins don't leak; ACLK
+  is on XT1 and the DCO/FLL/REFO are off in LPM3. The actual current measurement
+  is an on-hardware step — see **Power profiling** below.
 
-Remaining: Task 6 (set-time UI), Task 7 (power profiling). The caliper-LCD +
-colon/PM integration with the RTC lands when the V3 boards arrive (currently
-Tasks 4–5 display on the LaunchPad glass).
+Open items for hardware bring-up: the caliper-LCD + colon/PM integration with the
+RTC (Tasks 4–6 currently display on the LaunchPad glass); whether the buttons are
+capacitive vs short-to-ground; and whether set-mode should toggle AM/PM.
+
+## Power profiling (Task 7)
+
+The goal is ~3 µA average for 1.5–3 yr on an LR44/SR44. This is an on-hardware
+measurement; the firmware is already written to hit it (LPM3, XT1 ACLK, all
+unused pins driven low). What's left is to confirm and chase any leaks.
+
+**Targets** (datasheet §8.7, 3 V typ): LPM3 + LCD + charge pump ≈ **1.07 µA**;
+LPM3 + RTC ≈ 1.08 µA. The always-on LCD charge pump dominates the budget.
+
+**How to measure**
+- Easiest: the LaunchPad's onboard **EnergyTrace** (CCS/UniFlash) — but note its
+  floor (~hundreds of nA) and that LaunchPad LEDs/jumpers add current; pull the
+  `LED`/`RXD`/`TXD` jumpers on J101.
+- Most accurate: a µA meter (or DMM in µA range) in series with the coin cell on
+  the V3 board, MCU sleeping in LPM3.
+
+**Procedure**
+1. Flash a steady-state build and let it idle in LPM3 (no buttons pressed).
+2. Read the average current; expect ≈ 1–2 µA. The per-second RTC wake is too
+   brief to matter to the average.
+3. Press a button and confirm the wake spike is short (< ~10 ms) before it
+   returns to LPM3.
+
+**If it's over budget, check (in order)**
+- Floating inputs: every unused pin should be output-low (`board_init()` does
+  this; verify nothing re-floats a pin).
+- DCO/FLL/REFO left running: they should be off in LPM3 (ACLK is XT1). REFO is
+  only requested by the FLL during the brief active wakes.
+- LCD charge-pump frequency: `LCDCPFSEL=0b1111` (slowest) is already the
+  lowest-power setting; raising it costs current.
+- SVS: excluded from the datasheet typicals above; disable if enabled and not
+  needed.
+- XT1 drive: after startup the drive strength can be reduced (CSCTL6 XT1DRIVE)
+  for a small saving once oscillation is reliable.
 
 ## References
 
 Datasheets live in `../Datasheets/` (msp430fr4133, slau445 family UG, slaa654
-LCD_E app note, tps61099, ht1621b). The V2 firmware with the hard-won caliper LCD
-segment map is in `../../Caliper_Clock_V2/main.c`.
+LCD_E app note, tps61099, ht1621b, slau595 LaunchPad UG). The V2 firmware with the
+hard-won caliper LCD segment map is in `../../Caliper_Clock_V2/main.c`.

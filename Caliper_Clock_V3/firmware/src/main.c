@@ -9,6 +9,7 @@
  *   make BRINGUP=3 flash   -> Task 3: caliper LCD segment scan (V3 board only)
  *   make BRINGUP=4 flash   -> Task 4: XT1+RTC timekeeping demo on the LaunchPad
  *   make BRINGUP=5 flash   -> Task 5: buttons + LPM3 wake (P1.0-1.2 to GND)
+ *   make BRINGUP=6 flash   -> Task 6: full clock + set-time UI on the LaunchPad
  *
  * Higher tasks (RTC, buttons, LPM3.5, set-time, the real caliper LCD) get added
  * as they're implemented. BRINGUP defaults to the highest test in the Makefile.
@@ -20,11 +21,24 @@
 #define BRINGUP 2
 #endif
 
-/* Common board init: stop watchdog, unlock GPIO/LCD pins out of the
- * power-up high-Z state (FR4xx LPMx.5 lock; SLAU445 Digital I/O). */
+/* Common board init: stop watchdog, drive all GPIO low to minimize leakage,
+ * then release the power-up high-Z state.
+ *
+ * Driving every pin as an output low is TI's recommended treatment for unused
+ * pins (datasheet SLAS865 §7.4 "Connection of Unused Pins"); each module's init
+ * then reclaims the specific pins it needs (LCD via LCDPCTL, XT1 via P4SEL0,
+ * buttons as inputs). LOCKLPM5 must be cleared for the I/O config to take effect
+ * (FR4xx LPMx.5 lock; SLAU445 Digital I/O). The FR4133 exposes GPIO as 16-bit
+ * port pairs PA=P1:P2, PB=P3:P4, PC=P5:P6, PD=P7:P8. */
 static void board_init(void)
 {
     WDTCTL = WDTPW | WDTHOLD;
+
+    PADIR = 0xFFFF; PAOUT = 0x0000;   /* P1, P2 */
+    PBDIR = 0xFFFF; PBOUT = 0x0000;   /* P3, P4 */
+    PCDIR = 0xFFFF; PCOUT = 0x0000;   /* P5, P6 */
+    PDDIR = 0xFFFF; PDOUT = 0x0000;   /* P7, P8 */
+
     PM5CTL0 &= ~LOCKLPM5;
 }
 
@@ -136,6 +150,43 @@ int main(void)
     }
 }
 
+#elif BRINGUP == 6          /* ---- Task 6: full clock + set-time UI (LaunchPad) ---- */
+
+#include "hal_lcd.h"
+#include "rtc_clock.h"
+#include "buttons.h"
+#include "clock_app.h"
+
+/* LaunchPad display backend: show " H:MM" style on the FH-1138P glass (no colon
+ * segment exposed here, so the set-mode flash is the visual feedback). */
+static void launchpad_show(uint8_t h12, uint8_t mn, uint8_t colon, uint8_t pm,
+                           uint8_t blank)
+{
+    char buf[5];
+    (void)colon; (void)pm;
+    if (blank) { hal_lcd_display("    "); return; }
+    buf[0] = (h12 >= 10) ? '0' + h12 / 10 : ' ';
+    buf[1] = '0' + h12 % 10;
+    buf[2] = '0' + mn / 10;
+    buf[3] = '0' + mn % 10;
+    buf[4] = '\0';
+    hal_lcd_display(buf);
+}
+
+int main(void)
+{
+    board_init();
+    clock_init_xt1();
+    rtc_init();
+    hal_lcd_init();
+    buttons_init();
+    clock_set(12, 0);
+    __enable_interrupt();
+
+    clock_app_run(launchpad_show);    /* never returns */
+    return 0;
+}
+
 #else
-#error "Unknown BRINGUP value (expected 1, 2, 3, 4, or 5)"
+#error "Unknown BRINGUP value (expected 1, 2, 3, 4, 5, or 6)"
 #endif
