@@ -76,8 +76,8 @@ LaunchPad and retry (a known macOS eZ-FET quirk).
 
 The point is to build confidence one layer at a time: each step has a flashable
 test and a concrete "you should see X" so a failure is isolated to the layer you
-just added — instead of debugging a whole clock at once. Steps 1–2 exist today;
-3–7 are the planned checkpoints (this list is the roadmap for when boards arrive).
+just added — instead of debugging a whole clock at once. Steps 1–3 are implemented
+(3 runs only on a V3 board); 4–7 are the planned checkpoints (the roadmap).
 
 Run each on the **LaunchPad** first; once the custom V3 boards arrive, repeat the
 hardware-dependent ones (LCD, buttons, power) on the real board.
@@ -86,7 +86,7 @@ hardware-dependent ones (LCD, buttons, power) on the real board.
 |---|-------|----------------|----------------|
 | 1 | `make BRINGUP=1 flash` | Toolchain + flash path + the chip is alive | LaunchPad LED2 (P4.0) blinks ~1 Hz |
 | 2 | `make BRINGUP=2 flash` | LCD_E peripheral: 4-mux, charge-pump bias, ACLK, pin mux | LaunchPad glass shows **HELLO** (steady, readable contrast) |
-| 3 | *(planned)* segment-scan + caliper map | The V3→caliper SEG/COM map matches the physical glass | Each segment lights where expected; digits render correctly |
+| 3 | `make BRINGUP=3 flash` (V3 board only) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM); record the mapping and correct `HT1621_ADDR_TO_LCDE_SEG[]` |
 | 4 | *(planned)* RTC on XT1 | 32.768 kHz crystal + RTC keep time; ACLK moved off REFO | Colon blinks 1 Hz; minutes advance |
 | 5 | *(planned)* buttons + LPM3.5 | P1.0–1.2 wake from deep sleep; debounce | Button press wakes and registers; idles in LPM3.5 |
 | 6 | *(planned)* set-time UI | Long-press MODE, hour/min adjust, commit | Time can be set and is retained |
@@ -107,9 +107,14 @@ Notes:
   FH-1138P glass via LCD_E and displays "HELLO". Builds clean; segment tables and
   register sequence ported from verified TI/Energia sources (see file headers).
   Needs a LaunchPad to confirm visually.
+- **Task 3 (done, V3-board-only):** `src/caliper_lcd.c` drives the caliper glass
+  via LCD_E in Mode 2 bias (datasheet-verified). V2's segment map is ported
+  verbatim; the V2→V3 segment-line translation is one flagged table
+  (`HT1621_ADDR_TO_LCDE_SEG[]`) resolved by the scan test on real hardware.
+  `lcd_show_4digit` + scan test build clean. Can't run until V3 boards exist.
 
-Remaining: Task 3 (caliper segment map + scan test), Task 4 (RTC), Task 5
-(buttons + LPM3.5), Task 6 (set-time UI), Task 7 (power profiling).
+Remaining: Task 4 (RTC), Task 5 (buttons + LPM3.5), Task 6 (set-time UI),
+Task 7 (power profiling).
 
 ## References
 

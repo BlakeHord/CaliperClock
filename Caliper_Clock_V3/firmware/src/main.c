@@ -6,6 +6,7 @@
  *
  *   make BRINGUP=1 flash   -> Task 1: blink LaunchPad LED2 (toolchain check)
  *   make BRINGUP=2 flash   -> Task 2: LCD_E displays "HELLO" on the LaunchPad
+ *   make BRINGUP=3 flash   -> Task 3: caliper LCD segment scan (V3 board only)
  *
  * Higher tasks (RTC, buttons, LPM3.5, set-time, the real caliper LCD) get added
  * as they're implemented. BRINGUP defaults to the highest test in the Makefile.
@@ -51,6 +52,18 @@ int main(void)
         __delay_cycles(1000000);  /* hold the display; nothing else yet */
 }
 
+#elif BRINGUP == 3          /* ---- Task 3: caliper LCD segment scan (V3 board) ---- */
+
+#include "caliper_lcd.h"
+
+int main(void)
+{
+    board_init();
+    caliper_lcd_init();
+    caliper_lcd_segment_scan_test();  /* lights each (Lxx,COM) in turn; never returns */
+    return 0;
+}
+
 #else
-#error "Unknown BRINGUP value (expected 1 or 2)"
+#error "Unknown BRINGUP value (expected 1, 2, or 3)"
 #endif
