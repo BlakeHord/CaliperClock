@@ -121,9 +121,11 @@ void caliper_lcd_init(void)
 
     LCDCSSEL0 = 0x000F;                /* L0-L3 are common lines */
 
-    /* 4-mux, ACLK source, low-power waveform, segments on, divide-by-3.
-     * Uses the default ~32 kHz ACLK during bring-up; Task 4 moves ACLK to XT1.*/
-    LCDCTL0 = LCDMX0 | LCDMX1 | LCDSSEL_0 | LCDLP | LCDSON | LCDDIV_2;
+    /* 4-mux, ACLK source (LCDSSEL_1; SLAU445 Table 17-10: 00b=XT1CLK, 01b=ACLK,
+     * 10b=VLOCLK -- so LCDSSEL_1, NOT LCDSSEL_0, picks ACLK). Default ACLK is
+     * REFO (~32 kHz, auto-on when requested); Task 4 moves ACLK to XT1.
+     * Low-power waveform (LCDLP), segments on (LCDSON), divide-by-3 (LCDDIV_2). */
+    LCDCTL0 = LCDMX0 | LCDMX1 | LCDSSEL_1 | LCDLP | LCDSON | LCDDIV_2;
 
     /* Mode 2 bias (SLAU445 §17.2.8.1): VLCD from internal VDD (the regulated
      * 3.0 V), internal charge pump generates V1/V2/V4/V5 via the flying cap on

@@ -57,6 +57,14 @@ separate flashable test (1 blink → 2 LCD → 3 caliper scan → 4 RTC → 5 bu
   dominates, so LPM3 (~1.1 µA typ, §8.7) meets budget and avoids LPM3.5's
   wake-via-reset complexity. Main loops use an atomic disable-test-`__bis_SR`
   pattern to avoid lost wakeups.
+- **`LCDSSEL_x` is NOT what its name suggests** in standalone code. Per SLAU445
+  Table 17-10: `LCDSSEL_0`=XT1CLK, `LCDSSEL_1`=ACLK, `LCDSSEL_2`=VLOCLK. Energia's
+  `LCD_Launchpad.cpp` uses `LCDSSEL_0` because its core init starts XT1 first;
+  in standalone bring-up code use `LCDSSEL_1` (ACLK, which defaults to REFO at
+  reset and auto-starts when requested). General lesson: even "verbatim from a
+  verified working source" can hide framework-implicit preconditions — verify
+  *every* register field against the datasheet, not just the ones that *feel*
+  uncertain.
 - **The V2→V3 segment-line map is UNVERIFIED**: isolated in
   `HT1621_ADDR_TO_LCDE_SEG[]` (caliper_lcd.c). Resolve it on hardware with the
   BRINGUP=3 segment-scan test, then correct that one table.

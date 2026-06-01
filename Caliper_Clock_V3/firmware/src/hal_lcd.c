@@ -75,10 +75,12 @@ void hal_lcd_init(void)
     /* L0-L3 are common (backplane) lines, not segments. */
     LCDCSSEL0 = 0x000F;
 
-    /* 4-mux (LCDMX0|LCDMX1), source = ACLK (LCDSSEL_0), low-power waveform
-     * (LCDLP), segments on (LCDSON), divide by 3 (LCDDIV_2) for ~ frame rate.
-     * SLAU445 "LCDCTL0". */
-    LCDCTL0 = LCDMX0 | LCDMX1 | LCDSSEL_0 | LCDLP | LCDSON | LCDDIV_2;
+    /* 4-mux (LCDMX0|LCDMX1), source = ACLK (LCDSSEL_1; SLAU445 Table 17-10:
+     * 00b=XT1CLK, 01b=ACLK, 10b=VLOCLK). Energia uses LCDSSEL_0=XT1CLK because
+     * its framework starts XT1 first; we use ACLK so the default REFO (~32 kHz,
+     * auto-on when ACLK is requested) drives the LCD with no clock init.
+     * Low-power waveform (LCDLP), segments on (LCDSON), divide by 3 (LCDDIV_2). */
+    LCDCTL0 = LCDMX0 | LCDMX1 | LCDSSEL_1 | LCDLP | LCDSON | LCDDIV_2;
 
     /* Charge-pump bias (Mode 3): internal reference enabled (LCDREFEN),
      * charge pump enabled (LCDCPEN), VLCD ~3.0 V (VLCD_6), pump clock freq
