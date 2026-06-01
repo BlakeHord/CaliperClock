@@ -50,9 +50,11 @@ separate flashable test (1 blink → 2 LCD → 3 caliper scan → 4 RTC → 5 bu
   packing already accounts for this.
 - **LCD memory** must be addressed via integer arithmetic from `&LCDM0`
   (`lcd_byte()` in caliper_lcd.c) to avoid a `-Warray-bounds` false positive.
-- **RTC: `RTCMOD = 32`** for 1 Hz (XT1/1024 = 32 Hz). The counter overflows when
-  it *reaches* RTCMOD → period = RTCMOD ticks, NOT +1 (SLAU445 §15.2.1). Confirm
-  on hardware by timing the BRINGUP=4 LED heartbeat.
+- **RTC: `RTCMOD = 31`** for 1 Hz (XT1/1024 = 32 Hz). The FR4133 RTC counter has
+  the same `+1` period convention as Timer_A up mode (visits 0..RTCMOD then
+  wraps), so period = RTCMOD+1 ticks. *Hardware-verified*: `RTCMOD=32` initially
+  ran ~3% slow until corrected. SLAU445 §15.2.1's "reaches RTCMOD then resets"
+  wording is misleading — trust the silicon, not the prose.
 - **Sleep mode is LPM3, not LPM3.5** — the always-on LCD charge pump (~1 µA)
   dominates, so LPM3 (~1.1 µA typ, §8.7) meets budget and avoids LPM3.5's
   wake-via-reset complexity. Main loops use an atomic disable-test-`__bis_SR`

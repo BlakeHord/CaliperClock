@@ -41,14 +41,14 @@ void clock_init_xt1(void)
 
 void rtc_init(void)
 {
-    /* 1 Hz: XT1 (32768 Hz) / 1024 (RTCPS) = 32 Hz. Per SLAU445 §15.2.1 the RTC
-     * counter overflows when RTCCNT *reaches* the modulo value and resets to 0,
-     * so the period is RTCMOD ticks -- NOT RTCMOD+1 like Timer_A up mode. Hence
-     * 32 ticks / 32 Hz = 1 Hz exactly, so RTCMOD = 32 (NOT 31).
-     * Empirical check for bring-up: the BRINGUP=4 LED2 heartbeat must toggle
-     * every 1.000 s against a reference; if it's ~1.03 s, the period convention
-     * is +1 and this should be 31. (Datasheet says 32.) */
-    RTCMOD = 32;
+    /* 1 Hz: XT1 (32768 Hz) / 1024 (RTCPS) = 32 Hz. Hardware says the FR4133 RTC
+     * counter has the same +1 period convention as Timer_A up-mode -- i.e. the
+     * counter visits 0,1,..,RTCMOD before wrapping, so the period is RTCMOD+1
+     * ticks, NOT RTCMOD. We want 32 ticks per overflow, so RTCMOD = 31.
+     * (Verified empirically on the LaunchPad: RTCMOD=32 gave ~1.03 s/heartbeat;
+     * SLAU445 §15.2.1's "counter reaches RTCMOD then resets" wording sounded
+     * like period=RTCMOD but the silicon disagrees -- trust the heartbeat.) */
+    RTCMOD = 31;
 
     /* Source = XT1, predivide /1024, interrupt enabled. RTCSR loads the modulo
      * into the shadow register and resets the counter (TI-recommended after
