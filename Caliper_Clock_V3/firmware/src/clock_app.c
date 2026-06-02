@@ -54,22 +54,42 @@ static void ui_wait(void)
     ui_tick = 0;
 }
 
-/* MODE was just pressed. Returns 1 if it stays held for the long-press time. */
-static uint8_t mode_long_press(void)
+/* MODE was just pressed. Returns 1 if it stays held for the long-press time.
+ * Once the threshold is reached, the digits start flashing while still held to
+ * tell the user "you can let go now" -- the visual feedback continues until
+ * MODE is released, so this function returns only after release. */
+static uint8_t mode_long_press(clock_display_fn show)
 {
     uint16_t ticks = 0;
-    uint8_t  held  = 1;
 
     ui_timer_start();
+
+    /* Phase 1: count to threshold while held. */
     while (buttons_is_down(BTN_MODE)) {
         ui_wait();
         if (++ticks >= LONGPRESS_TICKS)
-            goto done;
+            break;
     }
-    held = 0;                          /* released before the threshold */
-done:
+    if (!buttons_is_down(BTN_MODE)) {
+        ui_timer_stop();
+        return 0;                       /* released early -- short press */
+    }
+
+    /* Phase 2: threshold reached. Flash digits as a "let go now" signal and
+     * spin until the user actually releases MODE before entering set mode. */
+    {
+        uint8_t h12, mn, pm;
+        uint16_t flash = 0;
+        clock_read(&h12, &mn, &pm);
+        while (buttons_is_down(BTN_MODE)) {
+            ui_wait();
+            flash++;
+            show(h12, mn, clock_colon, pm,
+                 (flash % FLASH_PERIOD) < FLASH_BLANK);
+        }
+    }
     ui_timer_stop();
-    return held;
+    return 1;
 }
 
 /* The time-setting interaction. Edits a local copy and commits to the RTC. */
@@ -81,11 +101,9 @@ static void run_set_mode(clock_display_fn show)
 
     clock_read(&h12, &mn, &pm);
 
+    /* mode_long_press() already flashed the digits and waited for the entry
+     * MODE release; we land here with MODE up and the user expecting set mode. */
     ui_timer_start();
-
-    /* Wait for the entry long-press to be released first (V2 does this). */
-    while (buttons_is_down(BTN_MODE))
-        ui_wait();
 
     for (;;) {
         uint8_t mode_down, hour_down, min_down;
@@ -168,7 +186,7 @@ void clock_app_run(clock_display_fn show)
         e = buttons_get_event();          /* leaves GIE off (saved off here) */
         if (e != BTN_NONE) {
             __enable_interrupt();
-            if (e == BTN_MODE && mode_long_press())
+            if (e == BTN_MODE && mode_long_press(show))
                 run_set_mode(show);
             clock_read(&h12, &mn, &pm);
             show(h12, mn, clock_colon, pm, 0);
