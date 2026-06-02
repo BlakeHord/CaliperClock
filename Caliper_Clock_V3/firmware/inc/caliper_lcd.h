@@ -36,4 +36,11 @@ void caliper_lcd_show_4digit(uint16_t value, uint8_t colon_on, uint8_t pm_on);
  * caliper_lcd.c. Blocking; never returns. */
 void caliper_lcd_segment_scan_test(void);
 
+/* Like _scan_test but slow (~4 s per (Lxx, COMy)) and bookended by a clear
+ * cycle-start marker (all on 4 s + all dark 4 s), so you can write down which
+ * physical caliper segment lights at each step. Order: L8 com0, L8 com1,
+ * L8 com2, L8 com3, L9 com0, ..., L18 com3 (44 positions, ~3 min per cycle).
+ * Blocking; never returns. */
+void caliper_lcd_segment_scan_slow(void);
+
 #endif /* CALIPER_LCD_H */

@@ -74,75 +74,80 @@ LaunchPad and retry (a known macOS eZ-FET quirk).
 
 ## Bring-up sequence
 
-The point is to build confidence one layer at a time: each step has a flashable
-test and a concrete "you should see X" so a failure is isolated to the layer you
-just added — instead of debugging a whole clock at once. Steps 1–6 are implemented
-(3 runs only on a V3 board); step 7 is the on-hardware power-measurement task.
+Each step has a flashable test and a concrete "you should see X" so a failure
+isolates to the layer just added — instead of debugging a whole clock at once.
+Steps 1–6 verify on the LaunchPad; **step 7 (`BRINGUP=7`)** is the full clock
+on the real caliper glass and requires a V3 board.
 
-Run each on the **LaunchPad** first; once the custom V3 boards arrive, repeat the
-hardware-dependent ones (LCD, buttons, power) on the real board.
+| # | Build | What it proves | Pass criterion | Status |
+|---|-------|----------------|----------------|--------|
+| 1 | `make BRINGUP=1 flash` | Toolchain + flash path + chip alive | LaunchPad LED2 (P4.0) blinks ~1 Hz | ✓ |
+| 2 | `make BRINGUP=2 flash` | LCD_E peripheral: 4-mux, charge-pump bias, ACLK, pin mux | LaunchPad glass shows **HELLO** | ✓ |
+| 3 | `make BRINGUP=3 flash` (V3) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM) | ✓ (superseded by BRINGUP=14 slow scan) |
+| 4 | `make BRINGUP=4 flash` | XT1 32.768 kHz + RTC 1 Hz tick | Time advances; LED2 toggles every 1 s | ✓ |
+| 5 | `make BRINGUP=5 flash` | P1.0–1.2 wake from LPM3; 50 ms debounce | Button-to-GND shows MODE/HOUR/MIN | ✓ |
+| 6 | `make BRINGUP=6 flash` | Full clock + set-time UI on LaunchPad | Time advances; long-press MODE → set; HOUR/MIN adjust; MODE commits | ✓ |
+| 7 | `make BRINGUP=7 flash` (V3) | Full clock on the caliper glass | 12:HH displays with blinking colon, battery icon as PM | ✓ (display + RTC verified) |
+| — | power profiling | Meets the ~µA budget | LPM3 + LCD ≈ 1–2 µA on a meter / EnergyTrace | pending |
 
-| # | Build | What it proves | Pass criterion |
-|---|-------|----------------|----------------|
-| 1 | `make BRINGUP=1 flash` | Toolchain + flash path + the chip is alive | LaunchPad LED2 (P4.0) blinks ~1 Hz |
-| 2 | `make BRINGUP=2 flash` | LCD_E peripheral: 4-mux, charge-pump bias, ACLK, pin mux | LaunchPad glass shows **HELLO** (steady, readable contrast) |
-| 3 | `make BRINGUP=3 flash` (V3 board only) | The V3→caliper SEG/COM map matches the physical glass | Scan test lights each (Lxx,COM); record the mapping and correct `HT1621_ADDR_TO_LCDE_SEG[]` |
-| 4 | `make BRINGUP=4 flash` (LaunchPad) | XT1 32.768 kHz + RTC 1 Hz tick keeps time | LED2 toggles every **1.000 s** (time it vs. a reference to confirm `RTCMOD`); displayed time advances (minutes roll over) |
-| 5 | `make BRINGUP=5 flash` | P1.0–1.2 wake from LPM3; 50 ms debounce | Button to GND shows MODE/HOUR/MIN + toggles LED2; idles in LPM3 |
-| 6 | `make BRINGUP=6 flash` (LaunchPad) | Full clock + set-time UI (RTC+buttons+display) | Time advances; 5 s MODE-hold enters set (digits flash); HOUR/MIN adjust; MODE commits |
-| 7 | power profiling (see below) | Meets the ~µA budget | LPM3 + LCD ≈ 1–2 µA on a meter / EnergyTrace |
+### Diagnostics (BRINGUP=8..17)
+
+Kept in tree for re-running if the glass or PCB ever changes. These resolved the
+V3 caliper LCD wiring empirically:
+
+| Build | Purpose |
+|-------|---------|
+| `BRINGUP=8`  | Static "8888" on the caliper LCD (full digit + colon + PM lit) |
+| `BRINGUP=9`  | Raw all-LCDM-bits-on (bypasses caliper helpers — probes hardware) |
+| `BRINGUP=10..13` | Incremental: enable extra LCDPCTL bits, Mode 2 + VLCD_6, COM swap |
+| `BRINGUP=14` | Slow per-(Lxx, COMy) scan, ~4 s/step — records empirical V3 segment map |
+| `BRINGUP=15` | Static "1200" with colon bit toggled in SW every 3 s — isolates SEG_COLON path |
+| `BRINGUP=16` | Light only the SEG_COLON candidate, alternating — confirms which physical segment a single bit drives |
+| `BRINGUP=17` | Sweep V2 `(addr, com=3)` for addr=1..10, ~5 s each — locates icons/dots on the com 3 backplane |
 
 Notes:
 - **Step 2 caveat:** the FH-1138P glass on the LaunchPad has a *different* pinout
-  from the caliper LCD. Step 2 only validates that LCD_E itself works; the
-  caliper-specific segment map is Step 3.
-- **Clock source:** Steps 1–2 run on the default post-reset ACLK (~32 kHz REFO),
-  matching TI's out-of-box demo. Step 4 switches ACLK to the 32.768 kHz **XT1**
-  crystal for timekeeping accuracy and lower power.
-- **Sleep mode = LPM3, not LPM3.5.** Per the datasheet (§8.7), LPM3 with the LCD
-  and RTC is ~1.1 µA typ — inside budget — while the always-on LCD charge pump
-  (~1 µA) means LPM3.5 would save only ~0.2 µA at the cost of waking via reset
-  (FRAM state persistence, full re-init). LPM3 wakes cleanly per second and on
-  button edges. Revisit LPM3.5 in Task 7 only if measurements demand it.
+  from the caliper LCD. Step 2 only validates LCD_E itself; the caliper-specific
+  segment map is Step 3.
+- **Clock source:** Steps 1–2 run on the default post-reset ACLK (~32 kHz REFO).
+  Step 4 switches ACLK to the 32.768 kHz **XT1** crystal for accuracy.
+- **Sleep mode = LPM3, not LPM3.5.** Per §8.7, LPM3 with the LCD and RTC is
+  ~1.1 µA typ; the always-on LCD charge pump dominates the budget, so LPM3.5
+  would save only ~0.2 µA at the cost of waking via reset.
+- **LaunchPad gotcha:** **pull jumper JP1 (LED1)** for button tests. JP1 puts
+  the green LED in series with P1.0 to GND, pulling P1.0 to ~1.8 V and breaking
+  the MODE button.
 
-## Current status
+## Status (current)
 
-- **Task 1 (done):** toolchain + skeleton verified; LED2 blink stub builds clean.
-- **Task 2 (done, untested on HW):** `src/hal_lcd.c` drives the LaunchPad
-  FH-1138P glass via LCD_E and displays "HELLO". Builds clean; segment tables and
-  register sequence ported from verified TI/Energia sources (see file headers).
-  Needs a LaunchPad to confirm visually.
-- **Task 3 (done, V3-board-only):** `src/caliper_lcd.c` drives the caliper glass
-  via LCD_E in Mode 2 bias (datasheet-verified). V2's segment map is ported
-  verbatim; the V2→V3 segment-line translation is one flagged table
-  (`HT1621_ADDR_TO_LCDE_SEG[]`) resolved by the scan test on real hardware.
-  `lcd_show_4digit` + scan test build clean. Can't run until V3 boards exist.
-- **Task 4 (done, LaunchPad-testable):** `src/rtc_clock.c` sources ACLK from the
-  32.768 kHz XT1 crystal and runs the RTC counter at 1 Hz, maintaining
-  sec/min/hour with 24→12 conversion (ported from V2). All register choices
-  datasheet-verified (SLAU445 CS ch.3 + RTC ch.15, Table 9-18 for XIN/XOUT).
-  `BRINGUP=4` demos it on the LaunchPad (time on the glass + LED2 heartbeat),
-  sleeping in LPM3 between ticks.
-- **Task 5 (done, LaunchPad-testable):** `src/buttons.c` — P1.0/1.1/1.2 (MODE/
-  HOUR/MIN), internal pull-ups, falling-edge IRQ that wakes from LPM3, 50 ms
-  Timer_A0 debounce. `BRINGUP=5` shows the pressed button on the glass. Uses
-  **LPM3** (see sleep-mode note above), not the bootstrap's LPM3.5. Open question:
-  the V3 pads may be *capacitive touch* rather than short-to-ground buttons — if
-  so this module needs rework; confirm on hardware.
-- **Task 6 (done, LaunchPad-testable):** `src/clock_app.c` — display + time-setting
-  state machine ported from V2 (5 s MODE long-press to enter; HOUR/MIN with
-  hold-to-repeat; ~100 ms/700 ms digit flash; short MODE commits to the RTC).
-  Display-abstracted via a callback; `BRINGUP=6` runs the whole clock on the
-  LaunchPad. Timer_A1 provides the 20 ms UI tick, only running during an
-  interaction. AM/PM isn't toggled while setting (mirrors V2) — flagged below.
-- **Task 7 (low-power init done; measurement pending hardware):** `board_init()`
-  now drives all pins output-low (SLAS865 §7.4) so unused pins don't leak; ACLK
-  is on XT1 and the DCO/FLL/REFO are off in LPM3. The actual current measurement
-  is an on-hardware step — see **Power profiling** below.
+All seven tasks are implemented and verified on hardware (V3 board for caliper
+LCD, buttons, RTC; LaunchPad for LCD_E peripheral check). Outstanding:
 
-Open items for hardware bring-up: the caliper-LCD + colon/PM integration with the
-RTC (Tasks 4–6 currently display on the LaunchPad glass); whether the buttons are
-capacitive vs short-to-ground; and whether set-mode should toggle AM/PM.
+- **Task 7 power profiling** — code is at low-power defaults; current draw not
+  yet measured. The charge-pump frequency was bumped to *fastest* (`LCDCPFSELx
+  = 0`) to fix faint contrast on the caliper glass; this raises LPM3+LCD above
+  the §8.7 ~1.07 µA typ. See "Power profiling" below.
+- **AM/PM in set-mode** — currently not toggled while setting (mirrors V2).
+  Open product question, not a bug.
+- **Display refresh artifact** — `caliper_lcd_show_4digit` does `clear()` then
+  re-writes the digit bits; byte 6 briefly transitions through 0 each tick,
+  visible as a ~1 Hz "glitch" of the whole display. Cosmetic; mitigated by
+  computing the new byte values and writing them in one assignment instead of
+  clear-then-OR.
+- **"in" icon ties to the decimal** — at L16 com 3 the LCD glass shares a trace
+  between the decimal dot and the "in" indicator, so they blink together. Not
+  separable in software (hardware-tied). Accepted.
+
+### V3 caliper LCD wiring (resolved Jun 2026)
+
+Same physical glass as V2, so V2's `DIGIT_SEG`, `SEG_COLON = (8, 3)`, and
+`SEG_PM = (3, 3)` all carry over. The V2→V3 translation needed two fixes
+documented in `caliper_lcd.c` and `CLAUDE.md`:
+
+- `HT1621_ADDR_TO_LCDE_SEG`: V2 addr N → V3 L(N+8) for N=1..10 (was earlier
+  guessed as L(N+7) with addr 10→L18; L17 is **not** NC, it carries V2 addr 9).
+- `LCDM0W = 0x1248`: L0↔L3 *and* L1↔L2 swapped vs. default — V2 com 1 and com 2
+  both need swapping on this board, not just com 3 via L0↔L3.
 
 ## Power profiling (Task 7)
 
@@ -168,16 +173,44 @@ LPM3 + RTC ≈ 1.08 µA. The always-on LCD charge pump dominates the budget.
    returns to LPM3.
 
 **If it's over budget, check (in order)**
+- **LCD charge-pump frequency:** currently `LCDCPFSELx = 0` (fastest, *max*
+  contrast and *max* current). Original bootstrap target was `LCDCPFSELx = 0xF`
+  (slowest) for §8.7 ~1.07 µA, but that put V3's caliper glass at threshold.
+  Sweep upward incrementally (1, 3, 7, …, 0xF) until contrast just degrades,
+  then back off one step — that's the right tradeoff.
 - Floating inputs: every unused pin should be output-low (`board_init()` does
   this; verify nothing re-floats a pin).
-- DCO/FLL/REFO left running: they should be off in LPM3 (ACLK is XT1). REFO is
-  only requested by the FLL during the brief active wakes.
-- LCD charge-pump frequency: `LCDCPFSEL=0b1111` (slowest) is already the
-  lowest-power setting; raising it costs current.
+- DCO/FLL/REFO left running: should be off in LPM3 (ACLK is XT1). REFO is only
+  requested by the FLL during brief active wakes.
 - SVS: excluded from the datasheet typicals above; disable if enabled and not
   needed.
 - XT1 drive: after startup the drive strength can be reduced (CSCTL6 XT1DRIVE)
-  for a small saving once oscillation is reliable.
+  once oscillation is reliable.
+
+## Next steps
+
+In rough priority order:
+
+1. **Set-mode UI hardware verification.** Code is implemented in `clock_app.c`
+   (5 s MODE long-press → digits flash → HOUR/MIN auto-repeat → short MODE
+   commits). Tested on the LaunchPad via `BRINGUP=6`; needs a sanity pass on
+   the V3 board's buttons. **Action:** `make BRINGUP=7 flash`, hold MODE 5 s,
+   confirm flash-and-set behaviour.
+2. **Power measurement (Task 7).** µA meter in series with VDD on the V3 board,
+   MCU sleeping in LPM3. Record baseline, then sweep `LCDCPFSELx` from 0 toward
+   0xF and find the lowest setting that keeps segments legible — that's the
+   power/contrast operating point.
+3. **Display refresh artifact.** The ~1 Hz "glitch" comes from
+   `caliper_lcd_show_4digit` clearing bytes 4–9 then re-writing. Replace with a
+   compute-locally-then-store-once pattern so segment bytes change in a single
+   write per byte, no visible blank step.
+4. **AM/PM in set-mode** (product decision). Add a fourth set-mode state that
+   toggles PM, or accept V2's behaviour of "set the digits, AM/PM derives from
+   24 h rollover."
+5. **LPM3.5 (only if power budget fails).** Requires FRAM persistence of the
+   clock state + full re-init on every wake. Saves ~0.2 µA over LPM3 with the
+   LCD charge pump dominating, so not worth the complexity unless measurement
+   forces it.
 
 ## References
 

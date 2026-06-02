@@ -20,7 +20,10 @@ SUPPORT_DIR ?= /opt/local/msp430-elf/include
 MSPDEBUG_ENV = DYLD_LIBRARY_PATH=/opt/local/lib
 
 # Which bring-up test to build (see src/main.c / README "Bring-up sequence").
-# 1=blink, 2=LCD HELLO, 3=caliper scan, 4=RTC, 5=buttons, 6=full clock.
+# 1=blink, 2=LCD HELLO, 3=caliper scan, 4=RTC, 5=buttons, 6=full clock (LaunchPad),
+# 7=V3 final (full clock on the caliper glass), 8..13=caliper LCD diagnostics,
+# 14=slow per-(Lxx,COMy) scan (~4 s each) for empirical V3 segment-map capture,
+# 15=static 1200 with colon toggled in SW every 3 s (isolates SEG_COLON path).
 # Override on the command line: make BRINGUP=1   (run `make clean` when changing it).
 BRINGUP ?= 2
 

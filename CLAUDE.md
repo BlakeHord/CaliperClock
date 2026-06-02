@@ -34,7 +34,9 @@ make clean
 
 `src/main.c` has a compile-time **`BRINGUP` selector** so each layer is a
 separate flashable test (1 blink → 2 LCD → 3 caliper scan → 4 RTC → 5 buttons →
-6 full clock). See the firmware README's "Bring-up sequence" table.
+6 full clock → 7 V3 final on the caliper LCD). 8–17 are caliper-LCD bring-up
+diagnostics kept in tree (segment scan, COM-swap, isolation sweeps). See the
+firmware README's "Bring-up sequence" table.
 
 ### Firmware modules (`src/`, `inc/`)
 - `hal_lcd` — LaunchPad FH-1138P glass via LCD_E (Task 2 validation only).
@@ -67,19 +69,42 @@ separate flashable test (1 blink → 2 LCD → 3 caliper scan → 4 RTC → 5 bu
   verified working source" can hide framework-implicit preconditions — verify
   *every* register field against the datasheet, not just the ones that *feel*
   uncertain.
-- **The V2→V3 segment-line map is UNVERIFIED**: isolated in
-  `HT1621_ADDR_TO_LCDE_SEG[]` (caliper_lcd.c). Resolve it on hardware with the
-  BRINGUP=3 segment-scan test, then correct that one table.
-- **Open hardware questions**: are the V3 buttons capacitive-touch or
-  short-to-ground (current code assumes the latter)? Should set-mode toggle
-  AM/PM (it doesn't, mirroring V2)?
+- **V2→V3 caliper LCD translation (hardware-verified Jun 2026 via the
+  BRINGUP=14 slow scan and the BRINGUP=16/17 isolation tests; same physical
+  glass as V2, so V2's `DIGIT_SEG`, `SEG_COLON`, and `SEG_PM` are the source
+  of truth):**
+  - `V2 addr N → V3 L(N+8)` for N=1..10 (linear; L17 is **not** NC despite
+    early guesses, it carries V2 addr 9 = D0 d/f/g; L8 carries an
+    unaddressed stray "D4 g" the firmware doesn't write).
+  - `LCDM0W = 0x1248`: L0→COM3, L1→COM2, L2→COM1, L3→COM0 — i.e. *both*
+    L0↔L3 and L1↔L2 swapped vs. the default. Without the L1↔L2 swap, V2's
+    com 1 and com 2 land on the wrong backplane.
+  - V2's `SEG_COLON = (8, 3)` is the decimal dot positioned between D2 and
+    D1 — exactly where a clock colon belongs (between hours and minutes);
+    the L16 SEG line has three electrodes (D1 a at com 2, D0 e at com 1,
+    the decimal at com 3) — one SEG line can drive multiple unrelated
+    physical electrodes. `SEG_PM = (3, 3)` is the battery icon (lit when
+    PM). A first-pass BRINGUP=14 scan misread (8, 3) as "Inch icon" and
+    reported a phantom dot at (5, 3); the BRINGUP=16/17 isolation tests
+    confirmed V2's addresses were correct.
+- **LCD charge-pump frequency**: `LCDCPFSELx = 0` (all bits clear, *fastest*
+  pump = max contrast) is set in `caliper_lcd_init`. The bootstrap originally
+  used `LCDCPFSELx = 0xF` (slowest, lowest current) per the §8.7 ~1.07 µA typ;
+  on this caliper glass that produced ON segments at threshold (visibly faint
+  and OFF segments picking up partial drive). Raises LPM3+LCD current above
+  §8.7 typ — first power-profiling task is to dial the pump frequency *up*
+  (more bits set) incrementally until contrast becomes unacceptable.
+- **LaunchPad gotcha**: jumper **JP1 (LED1)** must be **pulled** when testing
+  buttons. JP1 puts the green LED in series with P1.0 to GND, pulling P1.0 to
+  ~1.8 V and breaking the MODE button input. (V3 board doesn't have this issue.)
+- **Open hardware questions**: should set-mode toggle AM/PM (it doesn't,
+  mirroring V2). V3 buttons confirmed as short-to-ground GPIO (not capacitive).
 
 ## Working norms
 - **Verify against the datasheets, don't guess** — registers/pins/timing live in
   `Caliper_Clock_V3/Datasheets/`. Read PDFs with `pdftotext -layout <pdf> -`
   (poppler is installed) and cite the section in code comments.
-- Build with `-Wall -Wextra`; keep it warning-clean. **No hardware yet**, so all
-  firmware is compile- and datasheet-verified only — say so plainly.
+- Build with `-Wall -Wextra`; keep it warning-clean.
 - Environment: macOS Apple Silicon; git is **2.28** (old; `merge.conflictstyle`
   set to `diff3`, not `zdiff3`). Don't push to `master` directly — work branches
   (current work is on `v3-firmware`).

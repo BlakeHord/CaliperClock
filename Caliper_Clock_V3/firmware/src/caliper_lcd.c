@@ -1,17 +1,18 @@
 /*
  * caliper_lcd.c -- caliper LCD driver for Caliper Clock V3 (MSP430FR4133 LCD_E).
  *
- * The segment layout below is ported VERBATIM from the V2 firmware
+ * The segment layout (DIGIT_SEG) is ported VERBATIM from the V2 firmware
  * (Caliper_Clock_V2/main.c) -- it is the experimentally-determined map of the
- * physical caliper glass, expressed as (HT1621 SEG address, COM index). That
- * data is trusted. What is NOT yet trusted is how a V2 "HT1621 address" lands
- * on a V3 MSP430 LCD_E segment line; that lives in ONE clearly-marked table
- * (HT1621_ADDR_TO_LCDE_SEG) and is resolved on hardware via
- * caliper_lcd_segment_scan_test().
+ * physical caliper glass, expressed as (HT1621 SEG address, COM index). V3
+ * uses the same glass, so DIGIT_SEG is trusted.
  *
- * Register details cite SLAU445 (../Datasheets/slau445.pdf). Mode 2 bias and
- * the L0-L3 -> COM0-3 mapping (LCDM0W=0x8421) are datasheet-verified
- * (§17.2.8.1 and §17.2.3.2.1 respectively).
+ * The V2->V3 translation (V2 addr -> V3 Lxx; V2 com -> V3 backplane via
+ * LCDM0W) was unknown at first and resolved on hardware via the BRINGUP=14
+ * slow-scan test in Jun 2026. See the "V3 board wiring" block below.
+ *
+ * Register details cite SLAU445 (../Datasheets/slau445.pdf). Mode 2 bias is
+ * datasheet-verified (§17.2.8.1); the L0..L3 -> COM mapping in LCDM0W is
+ * §17.2.3.2.1.
  */
 
 #include <msp430.h>
@@ -29,44 +30,48 @@ static inline volatile unsigned char *lcd_byte(uint8_t offset)
 }
 
 /* ===========================================================================
- * V3 board wiring -- THE ONE PART THAT IS UNVERIFIED.
+ * V3 board wiring -- HARDWARE-VERIFIED (Jun 2026, BRINGUP=14 slow scan).
  *
- * LCD_E addresses memory by segment line (Lxx). On the V3 board the caliper
- * glass connects through J1 to these MSP430 lines (per the V3 pin plan):
- *     COM0..COM3  -> L0..L3
- *     "SEG1".."SEG10" -> L8..L17
+ * The V3 caliper glass is the same physical LCD as V2, so V2's DIGIT_SEG
+ * (addr, com) data is correct. What was unknown was how V2's HT1621 (addr,
+ * com) maps to V3's MSP430 LCD_E (Lxx, com). The scan resolved both:
  *
- * The map below assumes V2 HT1621 address N drives the same physical segment
- * as V3 segment line L(7+N), i.e. addr 1 -> L8 ... addr 10 -> L17, and that
- * COM index 0..3 is preserved between V2 and V3. BOTH assumptions are unproven
- * (the V2->V3 SEG order and the SEG0/SEG1 off-by-one were never confirmed).
+ *   V2 addr N  ->  V3 segment line L(N + 8)    (for N = 1..10)
+ *   V2 com 1   ->  V3 L2 backplane             (handled via LCDM0W = 0x1248)
+ *   V2 com 2   ->  V3 L1 backplane
+ *   V2 com 3   ->  V3 L0 backplane
+ *   V2 com 0   ->  NC (V3 L3; V2 only uses com 1..3)
  *
- * >>> When boards arrive: run caliper_lcd_segment_scan_test(), watch which
- * >>> element lights for each (Lxx, COM), and correct this table. Nothing else
- * >>> in this file should need to change.
+ * Two other V2 labels were also off (same glass; V2's main.c just mislabeled
+ * the icons): the actual decimal/colon dot is V2 (5, 3), not (8, 3), and the
+ * inch indicator that V3 uses as the PM mark is V2 (8, 3), not (3, 3). V2's
+ * old (3, 3) lights the battery icon, available but unused here.
  * =========================================================================== */
 #define SEG_EMPTY 0xFF
 #define LCDE_SEG_NONE 0xFF
 
-/* index = V2 HT1621 address (1..10); value = V3 LCD_E segment line. [0] unused. */
+/* index = V2 HT1621 address (1..10); value = V3 LCD_E segment line. [0] unused.
+ * V3 wires V2 addr N to L(N+8) for N=1..10. L17 (formerly assumed NC) carries
+ * V2 addr 9 (D0 d/f/g); only L8 has a stray segment (D4 g) V2 doesn't address. */
 static const uint8_t HT1621_ADDR_TO_LCDE_SEG[11] = {
     LCDE_SEG_NONE, /* 0: unused */
-    8,  /* addr 1  -> L8  */
-    9,  /* addr 2  -> L9  */
-    10, /* addr 3  -> L10 */
-    11, /* addr 4  -> L11 */
-    12, /* addr 5  -> L12 */
-    13, /* addr 6  -> L13 */
-    14, /* addr 7  -> L14 */
-    15, /* addr 8  -> L15 */
-    16, /* addr 9  -> L16 */
-    17  /* addr 10 -> L17 */
+    9,  /* addr 1  -> L9  */
+    10, /* addr 2  -> L10 */
+    11, /* addr 3  -> L11 */
+    12, /* addr 4  -> L12 */
+    13, /* addr 5  -> L13 */
+    14, /* addr 6  -> L14 */
+    15, /* addr 7  -> L15 */
+    16, /* addr 8  -> L16 */
+    17, /* addr 9  -> L17 */
+    18  /* addr 10 -> L18 */
 };
 
-/* The contiguous span of LCD_E segment lines used for digits (L8..L17), and the
- * LCD-memory byte indices they occupy (Lxx -> byte Lxx/2 -> bytes 4..8). */
+/* Span of LCD_E segment lines used by digit writes: L9..L18. L8 carries an
+ * unaddressed stray segment ("D4 g") that V2 never wrote and we don't either;
+ * including L8 in clear()'s sweep is harmless. */
 #define SEG_L_MIN 8
-#define SEG_L_MAX 17
+#define SEG_L_MAX 18
 
 /* ===========================================================================
  * V2 segment map -- ported verbatim from Caliper_Clock_V2/main.c (trusted).
@@ -82,6 +87,19 @@ static const seg_map_t DIGIT_SEG[4][7] = {
     {{SEG_EMPTY,1},{ 2,2},{ 2,1},{SEG_EMPTY,1},{SEG_EMPTY,1},{SEG_EMPTY,1},{ 1,2}} /* D3 */
 };
 
+/* V2's original addresses, hardware-verified on V3 (BRINGUP=16/17, Jun 2026):
+ *   (8, 3) = the decimal dot between D2 and D1 -- physically positioned right
+ *            where a clock colon belongs (between hours and minutes). The L16
+ *            SEG line has electrodes at three positions on the glass: D1 a
+ *            (com 2 phase), D0 e (com 1 phase), and this decimal (com 3
+ *            phase) -- a single SEG line can route to multiple electrodes at
+ *            unrelated physical positions, and the COM phase selects which.
+ *   (3, 3) = battery icon. V2 uses it as the PM indicator (lit when hour>=12);
+ *            we follow.
+ * A first-pass BRINGUP=14 scan misread (8, 3) as "Inch icon" and reported a
+ * phantom dot at (5, 3); the slow-isolation tests in BRINGUP=16 and the
+ * (addr, com=3) sweep in BRINGUP=17 located the real decimal at (8, 3) and
+ * confirmed (5, 3) drives nothing visible. V2's original labels were right. */
 static const seg_map_t SEG_COLON = { 8, 3 };
 static const seg_map_t SEG_PM    = { 3, 3 };
 
@@ -114,9 +132,9 @@ void caliper_lcd_init(void)
 {
     LCDCTL0 &= ~LCDON;                 /* off while configuring */
 
-    /* Enable LCD function on the pins we use: COMs L0-L3 and segments L8-L17. */
+    /* Enable LCD function on the pins we use: COMs L0-L3 and segments L8-L18. */
     LCDPCTL0 = 0xFF0F;                 /* L0-L3 (0x000F) + L8-L15 (0xFF00) */
-    LCDPCTL1 = 0x0003;                 /* L16, L17 */
+    LCDPCTL1 = 0x0007;                 /* L16, L17, L18 (all carry segments) */
     LCDPCTL2 = 0x0000;
 
     LCDCSSEL0 = 0x000F;                /* L0-L3 are common lines */
@@ -129,17 +147,36 @@ void caliper_lcd_init(void)
 
     /* Mode 2 bias (SLAU445 §17.2.8.1): VLCD from internal VDD (the regulated
      * 3.0 V), internal charge pump generates V1/V2/V4/V5 via the flying cap on
-     * LCDCAP0/LCDCAP1, no R13 reference, VLCDx unused. Slowest charge-pump
-     * frequency (all LCDCPFSEL bits) for lowest current. R13/R23/R33 stay
-     * floating in hardware. */
-    LCDVCTL = LCDSELVDD | LCDCPEN
-            | LCDCPFSEL3 | LCDCPFSEL2 | LCDCPFSEL1 | LCDCPFSEL0;
+     * LCDCAP0/LCDCAP1, no R13 reference, VLCDx unused. R13/R23/R33 stay
+     * floating in hardware.
+     *
+     * Charge-pump frequency: LCDCPFSELx = 0 (all bits cleared) = fastest pump
+     * for maximum contrast. Initially set to all-1s (slowest, lowest current)
+     * but on the V3 board this produced near-threshold ON levels: lit segments
+     * looked faint, OFF segments picked up partial drive from adjacent frame
+     * activity (notably the colon toggle), and the on/off difference on the
+     * actual colon dot was too small to read as a blink. Revisit for
+     * power-tuning once the per-segment contrast is healthy. */
+    LCDVCTL = LCDSELVDD | LCDCPEN;
 
     LCDMEMCTL |= LCDCLRM | LCDCLRBM;   /* clear display + blink memory */
 
-    /* L0->COM0 .. L3->COM3 (datasheet-derived; see file header). */
-    LCDM0W  = 0x8421;
-    LCDBM0W = 0x8421;
+    /* V3 COM mapping. The MSP430's L0..L3 (configured as COMs via LCDCSSEL0)
+     * are wired to the caliper backplanes in V2-COM order [3, 2, 1, 0] -- i.e.
+     * L0 -> V2 COM3, L1 -> V2 COM2, L2 -> V2 COM1, L3 -> V2 COM0 (NC on this
+     * glass; V2 only uses com 1..3). Each L's nibble in LCDM0W is the COM phase
+     * index it drives, so a V2-style (addr, com) write with com in {1,2,3}
+     * lands on the right backplane:
+     *   L0 nibble = 0x8 (phase 3) -> V2 COM3
+     *   L1 nibble = 0x4 (phase 2) -> V2 COM2
+     *   L2 nibble = 0x2 (phase 1) -> V2 COM1
+     *   L3 nibble = 0x1 (phase 0) -> V2 COM0 (NC)
+     * Packed low-to-high (L0..L3) into a 16-bit word: 0x1248.
+     * (Hardware-verified Jun 2026 via BRINGUP=14 slow scan; earlier BRINGUP=13
+     * had this at 0x1428 -- only L0<->L3 swapped -- which mis-routed V2 com 1
+     * and 2 because they also need swapping on this board.) */
+    LCDM0W  = 0x1248;
+    LCDBM0W = 0x1248;
 
     LCDMEMCTL &= ~LCDDISP;             /* show main memory */
 
@@ -224,6 +261,43 @@ void caliper_lcd_segment_scan_test(void)
                 caliper_lcd_clear();
                 set_lcde_segment(lcde_seg, com, 1);
                 __delay_cycles(400000);   /* ~0.5 s at ~1 MHz default MCLK */
+            }
+        }
+    }
+}
+
+void caliper_lcd_segment_scan_slow(void)
+{
+    /* Slow, note-takeable variant. Each (Lxx, COMy) holds for ~4 s. Each cycle
+     * is bookended by an all-on/all-dark marker so you can re-sync: after the
+     * 4 s dark gap, the NEXT step is L8 com0.
+     *
+     * Order of the 44 steps:
+     *   L8  com0, L8  com1, L8  com2, L8  com3,
+     *   L9  com0, L9  com1, L9  com2, L9  com3,
+     *   ...
+     *   L18 com0, L18 com1, L18 com2, L18 com3.
+     *
+     * Total per cycle: 4 s (all on) + 4 s (dark) + 44 * 4 s = 184 s (~3 min).
+     */
+    for (;;) {
+        uint8_t i, lcde_seg, com;
+
+        /* Cycle marker: all on for 4 s. */
+        for (i = (SEG_L_MIN >> 1); i <= (SEG_L_MAX >> 1); i++)
+            *lcd_byte(i) = 0xFF;
+        __delay_cycles(4000000);
+
+        /* Cycle marker: all dark for 4 s. After this, the NEXT step is L8 com0. */
+        caliper_lcd_clear();
+        __delay_cycles(4000000);
+
+        /* The 44 per-position steps. */
+        for (lcde_seg = SEG_L_MIN; lcde_seg <= SEG_L_MAX; lcde_seg++) {
+            for (com = 0; com < 4; com++) {
+                caliper_lcd_clear();
+                set_lcde_segment(lcde_seg, com, 1);
+                __delay_cycles(4000000);
             }
         }
     }
