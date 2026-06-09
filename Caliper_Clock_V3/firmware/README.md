@@ -52,19 +52,26 @@ firmware/
 ## Build
 
 ```sh
-make                 # builds the default bring-up test (BRINGUP=2) -> bin/firmware.elf
-make BRINGUP=1       # build a specific bring-up test (see below)
+make                 # builds the v1.0 PRODUCT (BRINGUP=7) -> bin/firmware.elf
+make BRINGUP=1       # build a specific diagnostic instead (see below)
 make clean           # removes build/ and bin/
 ```
 
-`src/main.c` selects one **bring-up test** at compile time via `BRINGUP`. The
-object files don't track that flag, so **`make clean` when switching `BRINGUP`**.
+The **default build is the product**: `BRINGUP=7`, the full clock on the caliper
+glass (timekeeping + display + buttons), versioned `FW_VERSION` in the Makefile
+(currently **v1.0**). The build prints a banner saying whether it produced the
+product or a diagnostic.
+
+`src/main.c` still selects the build at compile time via `BRINGUP`; the numbered
+bring-up/diagnostic builds are kept in-tree and reachable with an override (e.g.
+`make BRINGUP=3`). The object files don't track that flag, so **`make clean` when
+switching `BRINGUP`**.
 
 ## Flash & debug (LaunchPad connected via USB)
 
 ```sh
-make flash               # build (BRINGUP=2) + mspdebug tilib "prog bin/firmware.elf"
-make BRINGUP=1 flash     # build+flash a specific test
+make flash               # build + flash the v1.0 PRODUCT (BRINGUP=7)
+make BRINGUP=1 flash     # build+flash a specific diagnostic instead
 make debug               # interactive mspdebug session
 ```
 
@@ -76,8 +83,10 @@ LaunchPad and retry (a known macOS eZ-FET quirk).
 
 Each step has a flashable test and a concrete "you should see X" so a failure
 isolates to the layer just added — instead of debugging a whole clock at once.
-Steps 1–6 verify on the LaunchPad; **step 7 (`BRINGUP=7`)** is the full clock
-on the real caliper glass and requires a V3 board.
+Steps 1–6 verify on the LaunchPad; **step 7 is the v1.0 product** — the full
+clock on the real caliper glass — and is now the default `make` build (it
+requires a V3 board). The ladder is kept for diagnosing a regression to the
+layer that introduced it.
 
 | # | Build | What it proves | Pass criterion | Status |
 |---|-------|----------------|----------------|--------|
@@ -87,7 +96,7 @@ on the real caliper glass and requires a V3 board.
 | 4 | `make BRINGUP=4 flash` | XT1 32.768 kHz + RTC 1 Hz tick | Time advances; LED2 toggles every 1 s | ✓ |
 | 5 | `make BRINGUP=5 flash` | P1.0–1.2 wake from LPM3; 50 ms debounce | Button-to-GND shows MODE/HOUR/MIN | ✓ |
 | 6 | `make BRINGUP=6 flash` | Full clock + set-time UI on LaunchPad | Time advances; long-press MODE → set; HOUR/MIN adjust; MODE commits | ✓ |
-| 7 | `make BRINGUP=7 flash` (V3) | Full clock on the caliper glass | 12:HH displays with blinking colon, battery icon as PM | ✓ (display + RTC verified) |
+| 7 | `make flash` (default; V3) | **v1.0 product:** full clock on the caliper glass | 12:HH with blinking colon, battery icon as PM, buttons set time | ✓ verified on the custom V3 board (display + RTC + buttons) |
 | — | power profiling | Meets the ~µA budget | LPM3 + LCD ≈ 1–2 µA on a meter / EnergyTrace | pending |
 
 ### Diagnostics (BRINGUP=8..17)
@@ -191,11 +200,11 @@ LPM3 + RTC ≈ 1.08 µA. The always-on LCD charge pump dominates the budget.
 
 In rough priority order:
 
-1. **Set-mode UI hardware verification.** Code is implemented in `clock_app.c`
-   (5 s MODE long-press → digits flash → HOUR/MIN auto-repeat → short MODE
-   commits). Tested on the LaunchPad via `BRINGUP=6`; needs a sanity pass on
-   the V3 board's buttons. **Action:** `make BRINGUP=7 flash`, hold MODE 5 s,
-   confirm flash-and-set behaviour.
+1. **Timekeeping accuracy on the V3 board.** v1.0 (`make flash`) runs on the
+   custom board with display + buttons verified, but the V3 board has its own
+   FC-135 XT1 crystal (RTCMOD=31 was tuned on the LaunchPad). **Action:** let it
+   run several hours against a reference clock; if it drifts, re-check XT1 load
+   caps and RTCMOD.
 2. **Power measurement (Task 7).** µA meter in series with VDD on the V3 board,
    MCU sleeping in LPM3. Record baseline, then sweep `LCDCPFSELx` from 0 toward
    0xF and find the lowest setting that keeps segments legible — that's the

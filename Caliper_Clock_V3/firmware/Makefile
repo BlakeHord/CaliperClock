@@ -19,13 +19,22 @@ SUPPORT_DIR ?= /opt/local/msp430-elf/include
 # which lives in /opt/local/lib. tilib won't load it without this on macOS.
 MSPDEBUG_ENV = DYLD_LIBRARY_PATH=/opt/local/lib
 
-# Which bring-up test to build (see src/main.c / README "Bring-up sequence").
-# 1=blink, 2=LCD HELLO, 3=caliper scan, 4=RTC, 5=buttons, 6=full clock (LaunchPad),
-# 7=V3 final (full clock on the caliper glass), 8..13=caliper LCD diagnostics,
-# 14=slow per-(Lxx,COMy) scan (~4 s each) for empirical V3 segment-map capture,
-# 15=static 1200 with colon toggled in SW every 3 s (isolates SEG_COLON path).
-# Override on the command line: make BRINGUP=1   (run `make clean` when changing it).
-BRINGUP ?= 2
+# ---- Version ----------------------------------------------------------------
+# The product firmware. Bump this when cutting a new release.
+FW_VERSION = 1.0
+
+# Which build to compile (see src/main.c / README "Bring-up sequence").
+#
+# DEFAULT = the v1.0 product: BRINGUP=7, the full clock on the caliper glass
+# (timekeeping + display + buttons). Plain `make` / `make flash` builds this.
+#
+# The numbered bring-up/diagnostic builds are kept in-tree and selectable with
+# an override, e.g.  make BRINGUP=3 flash   (run `make clean` when changing it):
+#   1=blink, 2=LCD HELLO (LaunchPad), 3=caliper scan, 4=RTC, 5=buttons,
+#   6=full clock (LaunchPad), 7=V3 PRODUCT (full clock on caliper glass),
+#   8..13=caliper LCD diagnostics, 14=slow per-(Lxx,COMy) scan (~4 s each),
+#   15=static 1200 w/ SW colon toggle, 16/17=segment isolation sweeps.
+BRINGUP ?= 7
 
 # ---- Layout -----------------------------------------------------------------
 SRC_DIR   = src
@@ -43,6 +52,7 @@ ELF  = $(BIN_DIR)/$(TARGET).elf
 # -ffunction-sections/-fdata-sections + --gc-sections: drop unused code/data.
 # -MMD -MP: emit .d header-dependency files so edits to headers trigger rebuilds.
 CFLAGS  = -mmcu=$(MCU) -Os -g -std=gnu11 -Wall -Wextra -DBRINGUP=$(BRINGUP) \
+          -DFW_VERSION=\"$(FW_VERSION)\" \
           -ffunction-sections -fdata-sections -MMD -MP -I$(INC_DIR)
 LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections
 
@@ -52,9 +62,17 @@ LDFLAGS += -L$(SUPPORT_DIR)
 endif
 
 # ---- Targets ----------------------------------------------------------------
-.PHONY: all flash debug clean size
+.PHONY: all flash debug clean size version
 
-all: $(ELF) size
+# Print what this invocation will build (product vs. a diagnostic).
+version:
+ifeq ($(BRINGUP),7)
+	@echo "Caliper Clock V3 firmware v$(FW_VERSION)  (product: BRINGUP=7)"
+else
+	@echo "Caliper Clock V3 firmware v$(FW_VERSION)  (DIAGNOSTIC build BRINGUP=$(BRINGUP), not the product)"
+endif
+
+all: version $(ELF) size
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
