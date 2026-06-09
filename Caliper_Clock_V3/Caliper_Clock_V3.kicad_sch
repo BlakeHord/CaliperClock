@@ -8035,15 +8035,15 @@
 		)
 	)
 	(symbol
-		(lib_id "power:+3V0")
+		(lib_id "power:+BATT")
 		(at 148.59 38.1 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "f9ea9782-4e70-4d96-b207-21ae32b531c5")
-		(property "Reference" "#PWR0113"
+		(uuid "fd870bd7-e313-4158-bbb5-08c56c038855")
+		(property "Reference" "#PWR04"
 			(at 143.59 38.1 0)
 			(effects
 				(font
@@ -8052,13 +8052,12 @@
 				(hide yes)
 			)
 		)
-		(property "Value" "+3V0"
-			(at 157.48 37.846 90)
+		(property "Value" "+BATT"
+			(at 155.194 38.1 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify right)
 			)
 		)
 		(property "Footprint" ""
@@ -8088,12 +8087,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "5cab419b-21dc-4917-917a-94e0fe44708b")
+			(uuid "aae17f1f-55b9-463f-a853-67cd934ca3df")
 		)
 		(instances
 			(project "Caliper_Clock_V3"
 				(path "/802dda36-93fb-4ec2-b0ed-522fd3af0e85"
-					(reference "#PWR0113")
+					(reference "#PWR04")
 					(unit 1)
 				)
 			)
